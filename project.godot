@@ -1,0 +1,53 @@
+; Requiem - Shoot 'em up vertical
+; Godot 4.7 project file (config_version 5, compatible with Godot 4.x)
+
+config_version=5
+
+[application]
+
+config/name="Requiem"
+config/description="Shoot 'em up vertical 3D estilizado, camara cenital pura."
+run/main_scene="res://scenes/boot/Boot.tscn"
+config/features=PackedStringArray("4.2", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+GameManager="*res://autoload/GameManager.gd"
+InputManager="*res://autoload/InputManager.gd"
+SaveManager="*res://autoload/SaveManager.gd"
+AudioManager="*res://autoload/AudioManager.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+window/handheld/orientation="portrait"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+environment/defaults/default_clear_color=Color(0.03, 0.035, 0.06, 1)
+textures/canvas_textures/default_texture_filter=0
+anti_aliasing/quality/msaa_3d=1
+
+[physics]
+
+3d/physics_engine="GodotPhysics3D"
+common/physics_ticks_per_second=60
+
+[layer_names]
+
+3d_physics/layer_1="player"
+3d_physics/layer_2="player_bullets"
+3d_physics/layer_3="enemies"
+3d_physics/layer_4="enemy_bullets"
+3d_physics/layer_5="powerups"
+3d_physics/layer_6="boss"
+3d_physics/layer_7="player2"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true

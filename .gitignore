@@ -1,0 +1,18 @@
+# Godot 4
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+.mono/
+data_*/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+
+# Meshy source exports (kept outside repo unless explicitly added)
+/assets/meshy_raw/
+
+# Local validation binary (downloaded on the fly, not part of the repo)
+/tools/godot_bin/
