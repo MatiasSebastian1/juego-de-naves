@@ -478,7 +478,7 @@ function drawSoldier(g, e, b) {
   const c = k => F ? '#ffffff' : pal[k], wide = e.type === 'heavy' ? 1.35 : e.type === 'runner' ? 0.85 : 1;
   const sw = Math.sin(e.anim * (e.type === 'runner' ? 14 : 8)) * (e.moving ? 1 : 0.12);
   g.save(); g.translate(b.x, b.y);
-  g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(0, 0, 30 * u * wide, 8 * u, 0, 0, 7); g.fill();
+  if (!e.noShadow) { g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(0, 0, 30 * u * wide, 8 * u, 0, 0, 7); g.fill(); }
   if (e.dying) { const k = Math.min(1, e.dt / 0.35); g.rotate(-k * 1.45 * (e.x > W / 2 ? -1 : 1)); g.globalAlpha = 1 - clamp((e.dt - 0.4) / 0.3, 0, 1); }
   const body = (x, y, w, h, r, col) => {
     const gr = g.createLinearGradient(x, 0, x + w, 0);
@@ -519,7 +519,7 @@ function drawSoldier(g, e, b) {
 function drawBoss(g, e, b) {
   const u = b.h / 100, F = e.flash > 0, t = e.anim, sw = Math.sin(t * 2.2) * (e.moving ? 1 : 0.3);
   g.save(); g.translate(b.x, b.y);
-  g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(0, 0, 48 * u, 11 * u, 0, 0, 7); g.fill();
+  if (!e.noShadow) { g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(0, 0, 48 * u, 11 * u, 0, 0, 7); g.fill(); }
   if (e.dying) { g.globalAlpha = 1 - clamp(e.dt / 0.7, 0, 1); g.translate(0, e.dt * 30 * u); g.rotate(Math.sin(e.dt * 40) * 0.03); }
   const metal = (x, y, w, h, r, a = '#7c8596', c = '#2a2f3c') => {
     const gr = g.createLinearGradient(x * u, 0, (x + w) * u, 0);
@@ -540,6 +540,7 @@ function drawBoss(g, e, b) {
   glow(g, 0, -62 * u, 34 * u, 'rgba(255,90,40,A)', pulse); glow(g, 0, -96 * u, 26 * u, 'rgba(255,60,40,A)', aim ? 0.9 : 0.4);
   if (aim) { glow(g, -58 * u, -20 * u, 30 * u, 'rgba(255,120,60,A)', 0.8); glow(g, 58 * u, -20 * u, 30 * u, 'rgba(255,120,60,A)', 0.8); }
   g.restore(); g.restore();
+  if (e.noBar) return;
   // barra de vida
   const bw = 260, pct = clamp(e.hp / e.max, 0, 1);
   g.fillStyle = 'rgba(0,0,0,.6)'; rr(g, b.x - bw / 2, b.y - b.h - 30, bw, 10, 5); g.fill();
@@ -581,11 +582,18 @@ function drawPickup(g, k) {
   g.fillStyle = col; g.font = '900 24px system-ui,Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k.k, 0, 2);
   g.restore();
 }
-function drawPlayer(g) {
-  const u = 1.55, rolling = P.roll > 0;
+function drawGun(g, u) {
+  g.fillStyle = '#566b40'; rr(g, -4 * u, -5 * u, 24 * u, 10 * u, 4 * u); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.stroke();
+  const gr = g.createLinearGradient(0, -7 * u, 0, 7 * u); gr.addColorStop(0, '#5b5b66'); gr.addColorStop(1, '#17171c');
+  g.fillStyle = gr; rr(g, 10 * u, -6 * u, 52 * u, 12 * u, 3 * u); g.fill(); g.stroke();
+  g.fillStyle = '#0d0d10'; g.fillRect(58 * u, -3 * u, 16 * u, 6 * u); g.fillStyle = '#2b2b33'; rr(g, 30 * u, 6 * u, 10 * u, 16 * u, 2 * u); g.fill();
+}
+function drawPlayer(g, opts = {}) {
+  const u = 1.55, rolling = P.roll > 0 && !opts.bodyOnly;
+  if (opts.gunOnly) { g.save(); g.translate(opts.gx || 0, opts.gy || 0); drawGun(g, u); g.restore(); return; }
   g.save(); g.translate(P.x, P.y);
   g.fillStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.ellipse(0, 0, 34 * u, 9 * u, 0, 0, 7); g.fill();
-  if (P.inv > 0 && !rolling && Math.floor(time * 24) % 2) g.globalAlpha = 0.45;
+  if (!opts.bodyOnly && P.inv > 0 && !rolling && Math.floor(time * 24) % 2) g.globalAlpha = 0.45;
   const shoulder = { x: P.x + 16 * u, y: P.y - 66 * u };
   if (rolling) { const k = 1 - P.roll / 0.36; g.translate(0, -40 * u); g.rotate(k * Math.PI * 2 * (P.rd.x >= 0 ? 1 : -1)); g.scale(1, 0.72); g.translate(0, 40 * u); }
   const part = (x, y, w, h, r, a, b2) => {
@@ -605,14 +613,12 @@ function drawPlayer(g) {
   g.fillStyle = hg; g.beginPath(); g.arc(0, -92 * u, 15 * u, 0, 7); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.6; g.stroke();
   g.fillStyle = '#1a2012'; rr(g, -14 * u, -86 * u, 28 * u, 5 * u, 2 * u); g.fill();
   g.restore();
+  if (opts.bodyOnly) return;
   // brazo + rifle apuntando al cursor
   g.save(); g.translate(shoulder.x, shoulder.y);
   const ang = Math.atan2(mouse.y - shoulder.y, mouse.x - shoulder.x); g.rotate(ang);
   const f = ang > Math.PI / 2 || ang < -Math.PI / 2; if (f) g.scale(1, -1);
-  g.fillStyle = '#566b40'; rr(g, -4 * u, -5 * u, 24 * u, 10 * u, 4 * u); g.fill(); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.5; g.stroke();
-  const gr = g.createLinearGradient(0, -7 * u, 0, 7 * u); gr.addColorStop(0, '#5b5b66'); gr.addColorStop(1, '#17171c');
-  g.fillStyle = gr; rr(g, 10 * u, -6 * u, 52 * u, 12 * u, 3 * u); g.fill(); g.stroke();
-  g.fillStyle = '#0d0d10'; g.fillRect(58 * u, -3 * u, 16 * u, 6 * u); g.fillStyle = '#2b2b33'; rr(g, 30 * u, 6 * u, 10 * u, 16 * u, 2 * u); g.fill();
+  drawGun(g, u);
   g.restore();
   P.muzzle.x = shoulder.x + Math.cos(ang) * 74 * u; P.muzzle.y = shoulder.y + Math.sin(ang) * 74 * u;
   if (P.flash > 0) { g.save(); g.globalCompositeOperation = 'lighter'; glow(g, P.muzzle.x, P.muzzle.y, 46, 'rgba(255,210,120,A)', 1); glow(g, P.muzzle.x, P.muzzle.y, 18, 'rgba(255,255,255,A)', 1); g.restore(); }
@@ -773,7 +779,7 @@ function frame(ts) {
 requestAnimationFrame(frame);
 
 // hooks para pruebas automáticas
-window.__cabal = { P, spawn, startWave, enemyAttack, get state() { return state; }, get enemies() { return enemies; }, get wave() { return wave; }, get score() { return score; } };
+window.__cabal = { drawSoldier, drawBoss, drawBarricade, drawCrate, drawPickup, drawPlayer, bg, PAL, mouse, P, spawn, startWave, enemyAttack, get state() { return state; }, get enemies() { return enemies; }, get wave() { return wave; }, get score() { return score; } };
 })();
 </script>
 </body>
