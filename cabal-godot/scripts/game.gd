@@ -9,6 +9,7 @@ const PlayerS = preload("res://scripts/player.gd")
 const EnemyS = preload("res://scripts/enemy.gd")
 const Shell = preload("res://scripts/shell.gd")
 const Props = preload("res://scripts/props.gd")
+const Stage = preload("res://scripts/stage.gd")
 const POST = preload("res://shaders/post.gdshader")
 const SAVE_PATH := "user://cabalhd.cfg"
 const TOP_N := 5            # tamanos del ranking local
@@ -20,7 +21,7 @@ var fx
 var sfx
 var hud
 var cam: Camera2D
-var bg: Sprite2D
+var stage
 var post_mat: ShaderMaterial
 var player
 
@@ -78,20 +79,10 @@ func _ready() -> void:
 	world = Node2D.new()
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(world)
-	var mod := CanvasModulate.new()
-	mod.color = Color(0.86, 0.82, 0.94)
-	add_child(mod)
-	var sun := DirectionalLight2D.new()
-	sun.color = Color(1.0, 0.76, 0.52)
-	sun.energy = 0.32
-	add_child(sun)
-	bg = Sprite2D.new()
-	bg.texture = K.tex("background")
-	bg.position = Vector2(640, 360)
-	bg.scale = Vector2.ONE * 0.53
-	bg.z_index = -100
-	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	world.add_child(bg)
+	stage = Stage.new()
+	stage.game = self
+	world.add_child(stage)
+	stage.setup()
 	fx = Fx.new()
 	world.add_child(fx)
 	fx.ambient()
@@ -521,6 +512,8 @@ func explosion(pos: Vector2, big := 1.0) -> void:
 	fx.debris(pos, int(10 * big))
 	fx.ring(pos, 150.0 * big)
 	fx.light_flash(pos, 2.6 * big, 9.0 * big, Color(1.0, 0.65, 0.35), 0.45)
+	stage.shock(pos, minf(1.6, 0.7 + big * 0.4))
+	stage.heat(pos + Vector2(0, -20), 0.9, minf(1.5, 0.8 * big))
 	shake_t = maxf(shake_t, 0.35 * big)
 	flash_t = maxf(flash_t, 0.12 * big)
 	sfx.play("boom", 0.0, 0.1)
@@ -558,6 +551,7 @@ func _nade(src: Vector2, tg: Vector2) -> void:
 	shells.append(s)
 
 func enemy_attack(e) -> void:
+	e.kick = 1.0
 	var b: Dictionary = e.box()
 	var src := Vector2(b.x, b.y - b.h * 0.62)
 	var fly: float = diff["fly"]
@@ -600,6 +594,7 @@ func hurt_player(d: float) -> void:
 	player.hit_t = 0.18
 	hurt_t = 0.5
 	hitstop(0.07)
+	stage.shock(player.position + Vector2(0, -60), 0.55)
 	streak = 0
 	shake_t = maxf(shake_t, 0.3)
 	sfx.play("hurt")
@@ -624,10 +619,10 @@ func _process(dt: float) -> void:
 		update(dt)
 	var s := 0.0 if state == "pause" else shake_t * 22.0
 	cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * s + (mouse - Vector2(640, 360)) * 0.012
-	bg.position = Vector2(640, 360) + cam.offset * 0.85
 	post_mat.set_shader_parameter("hurt", clampf(hurt_t * 2.0, 0.0, 1.0))
 	post_mat.set_shader_parameter("flash", flash_t * 1.4)
 	post_mat.set_shader_parameter("time_s", fmod(time, 100.0))
+	stage.update(dt, mouse, cam.offset, player.position.x, state, post_mat)
 	hud.queue_redraw()
 
 func update(dt: float) -> void:
@@ -658,7 +653,7 @@ func update(dt: float) -> void:
 		e.tick(dt)
 	for i in range(enemies.size() - 1, -1, -1):
 		var e = enemies[i]
-		if e.dying and e.dead_t > 0.7:
+		if e.dying and e.dead_t > e.death_len():
 			e.queue_free()
 			enemies.remove_at(i)
 

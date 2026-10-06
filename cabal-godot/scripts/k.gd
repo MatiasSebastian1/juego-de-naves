@@ -17,6 +17,15 @@ const TYPES := {
 static var _tex := {}
 static var _add: CanvasItemMaterial = null
 static var _ramps := {}
+static var _has := {}
+static var _shadow_mat: ShaderMaterial = null
+static var lit := true   # usar mapas de normales (<nombre>_n.png) cuando existan
+
+# Sol: posicion en pantalla (para destellos), inclinacion de las sombras proyectadas y su aplastamiento.
+# El sol esta arriba a la derecha y casi sobre el horizonte, asi que las sombras caen hacia el jugador, a la izquierda.
+const SUN_POS := Vector2(760.0, 120.0)
+const SHADOW_SKEW := -0.62
+const SHADOW_SQUASH := 0.34
 
 # ---------------------------------------------------------------- dificultad
 # Parametros de una oleada n (1..15 y mas alla, con tope).  Todo escala suave para no ser injusto:
@@ -60,8 +69,20 @@ static func preload_all() -> void:
 		tex("barricade_%d" % i)
 	for k in ["H", "G", "S", "R"]:
 		tex("pickup_%s" % k)
+	for t in ["rifle", "grenadier", "runner", "heavy"]:
+		for f in ["walk3", "walk4", "die1", "die2", "die3"]:
+			if has("enemy_%s_%s" % [t, f]):
+				tex("enemy_%s_%s" % [t, f])
+	for f in ["die1", "die2", "die3"]:
+		if has("boss_%s" % f):
+			tex("boss_%s" % f)
+	for n in ["player_body_walk1", "player_body_walk2", "player_body_hurt", "bg_sky", "bg_far", "bg_mid", "bg_ground", "fg_rubble",
+			"fx_muzzle", "fx_smoke_puff", "fx_spark", "fx_flare", "fx_shockwave", "fx_shell"]:
+		if has(n):
+			tex(n)
 	for n in ["crate_raw", "player_body", "player_gun", "background"]:
 		tex(n)
+	streak_tex()
 	glow_tex()
 	soft_tex()
 	shadow_tex()
@@ -74,10 +95,44 @@ static func zscale(z: float) -> float:
 static func zy(z: float) -> float:
 	return HOR + z * (FLOOR - HOR)
 
+# Existe el sprite? (cacheado; sirve para activar mejoras solo si el arte nuevo esta presente)
+static func has(n: String) -> bool:
+	if not _has.has(n):
+		_has[n] = ResourceLoader.exists("res://assets/sprites/%s.png" % n)
+	return _has[n]
+
+# Textura de un sprite.  Si existe `<n>_n.png` devuelve una CanvasTexture (difusa + normales) para iluminar con relieve.
 static func tex(n: String) -> Texture2D:
 	if not _tex.has(n):
-		_tex[n] = load("res://assets/sprites/%s.png" % n)
+		var base: Texture2D = load("res://assets/sprites/%s.png" % n)
+		if lit and has(n + "_n"):
+			var ct := CanvasTexture.new()
+			ct.diffuse_texture = base
+			ct.normal_texture = load("res://assets/sprites/%s_n.png" % n)
+			_tex[n] = ct
+		else:
+			_tex[n] = base
 	return _tex[n]
+
+# Material compartido de las sombras proyectadas (copia aplastada, oscura y suave del sprite).
+static func shadow_mat() -> ShaderMaterial:
+	if _shadow_mat == null:
+		_shadow_mat = ShaderMaterial.new()
+		_shadow_mat.shader = load("res://shaders/shadow.gdshader")
+	return _shadow_mat
+
+# Sombra proyectada para un sprite: mismo offset/escala base, volteada, aplastada e inclinada segun el sol.
+static func make_shadow(off: Vector2, base_scale := 1.0, strength := 0.5) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.centered = false
+	s.offset = off
+	s.scale = Vector2(base_scale, -base_scale * SHADOW_SQUASH)
+	s.skew = SHADOW_SKEW
+	s.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	s.material = shadow_mat()
+	s.self_modulate = Color(1, 1, 1, strength)
+	s.light_mask = 0
+	return s
 
 static func _radial(offsets: Array, colors: Array) -> GradientTexture2D:
 	var g := Gradient.new()
@@ -106,6 +161,22 @@ static func shadow_tex() -> Texture2D:
 	if not _tex.has("_shadow"):
 		_tex["_shadow"] = _radial([0.0, 0.6, 1.0], [Color(0, 0, 0, 0.6), Color(0, 0, 0, 0.38), Color(0, 0, 0, 0)])
 	return _tex["_shadow"]
+
+# Estela vertical (para chispas alineadas con la velocidad): brillante abajo (cabeza), se desvanece hacia arriba.
+static func streak_tex() -> Texture2D:
+	if not _tex.has("_streak"):
+		var w := 16
+		var h := 64
+		var im := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		for y in h:
+			var ty := float(y) / (h - 1)          # 0 = cola, 1 = cabeza
+			for x in w:
+				var tx := absf((float(x) + 0.5) / w * 2.0 - 1.0)
+				var a := pow(ty, 2.2) * clampf(1.0 - tx * (0.4 + 0.6 * (1.0 - ty)), 0.0, 1.0)
+				a = clampf(a * (1.0 - tx * tx), 0.0, 1.0)
+				im.set_pixel(x, y, Color(1, 1, 1, a))
+		_tex["_streak"] = ImageTexture.create_from_image(im)
+	return _tex["_streak"]
 
 static func ring_tex() -> Texture2D:
 	if not _tex.has("_ring"):
