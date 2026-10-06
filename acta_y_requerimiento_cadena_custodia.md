@@ -95,6 +95,17 @@ Puntos sugeridos:
 - Si corresponde, se solicita que se oficie al Depósito para que reciba las muestras con la
   planilla original.
 
+### Verificado contra el PDF del CPPCABA (Ley 2303)
+- Art. 94 (ACTUACIONES. DELEGACIÓN): la primera frase es textual: "La investigación preparatoria
+  se realizará de manera desformalizada, excepto cuando se trate de actos definitivos e
+  irreproducibles." El resto del artículo trata de delegación de actos en personal de la
+  Fiscalía o fuerzas de seguridad.
+- Art. 133 (CONSERVACIÓN DE LA MATERIA A PERITAR): Fiscal y peritos deben procurar que las cosas
+  a examinar se conserven "de modo que el peritaje pueda repetirse". Útil como pauta sobre
+  integridad de las muestras, pero es norma local.
+- El CPPCABA no menciona la "cadena de custodia" (sin resultados en el texto) y no regula la
+  planilla ni el depósito de drogas.
+
 ### Notas sobre citas (VERIFICAR antes de usar)
 - La causa es federal: la norma que rige la prueba es la del código procesal que aplique ese
   juzgado, no el CPPCABA. Por eso conviene NO fundar en el art. 94 del CPPCABA.
