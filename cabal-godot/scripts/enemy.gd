@@ -21,6 +21,9 @@ var dead_t := 0.0
 var moving := true
 var pat := 0
 var size := 1.0
+var cd_mul := 1.0     # escala del tiempo entre disparos (dificultad por oleada)
+var tele_mul := 1.0   # escala del telegrafo
+var enraged := false  # el jefe se enfurece por debajo del 50% de vida
 
 var spr: Sprite2D
 var shadow: Sprite2D
@@ -33,7 +36,11 @@ func setup(t: String, wave: int) -> void:
 	var T: Dictionary = K.TYPES[t]
 	size = T["size"]
 	tz = randf_range(T["tz"][0], T["tz"][1])
-	hp = T["hp"] + (wave * 10.0 if t == "boss" else 0.0)
+	var D: Dictionary = K.diff(wave)
+	cd_mul = D["cd"]
+	tele_mul = D["tele"]
+	# el jefe escala por oleada; el resto con el multiplicador de vida de la dificultad
+	hp = (T["hp"] + wave * 8.0) if t == "boss" else T["hp"] * D["hp"]
 	max_hp = hp
 	x = randf_range(120.0, 1160.0)
 	z = randf_range(0.03, 0.14)
@@ -104,6 +111,10 @@ func tick(dt: float) -> void:
 		return
 	var T: Dictionary = K.TYPES[type]
 	moving = false
+	if type == "boss" and not enraged and hp < max_hp * 0.5:
+		enraged = true
+		cd_mul *= 0.72
+		game.boss_enrage(self)
 	if type == "runner":
 		z += dt * T["spd"]
 		x += (game.player.position.x - x) * dt * 0.9
@@ -124,6 +135,6 @@ func tick(dt: float) -> void:
 		if aim <= 0.0:
 			game.enemy_attack(self)
 	elif cd <= 0.0 and z >= tz - 0.05:
-		aim = T["tele"]
-		cd = randf_range(T["cd"][0], T["cd"][1])
+		aim = maxf(0.3, T["tele"] * tele_mul)
+		cd = randf_range(T["cd"][0], T["cd"][1]) * cd_mul
 	_apply(dt)

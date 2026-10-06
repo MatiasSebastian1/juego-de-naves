@@ -3,16 +3,44 @@ extends Node2D
 
 const K = preload("res://scripts/k.gd")
 
+const MAX_EMITTERS := 56   # tope de emisores de particulas vivos (cuida los 60 FPS en combates intensos)
+const MAX_LIGHTS := 8      # tope de luces dinamicas simultaneas
+
+var _emitters := 0
+var _lights := 0
+# Recursos constantes compartidos por todas las particulas (no se crean por disparo)
+var _smoke_curve: Curve
+var _smoke_ramp: Gradient
+var _fire_ramp: Gradient
+
+func _ready() -> void:
+	_smoke_curve = Curve.new()
+	_smoke_curve.add_point(Vector2(0, 0.5))
+	_smoke_curve.add_point(Vector2(1, 1.6))
+	_smoke_ramp = Gradient.new()
+	_smoke_ramp.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	_smoke_ramp.colors = PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 1.0), Color(1, 1, 1, 0.0)])
+	_fire_ramp = Gradient.new()
+	_fire_ramp.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	_fire_ramp.colors = PackedColorArray([Color(1.0, 0.9, 0.55, 1.0), Color(1.0, 0.45, 0.12, 0.8), Color(0.6, 0.1, 0.05, 0.0)])
+
 func _emit(p: CPUParticles2D, life: float, pos: Vector2, zi := 160) -> void:
+	_emitters += 1
 	p.position = pos
 	p.z_index = zi
 	p.one_shot = true
 	p.explosiveness = 1.0
 	add_child(p)
 	p.emitting = true
-	get_tree().create_timer(life + 0.4).timeout.connect(func(): if is_instance_valid(p): p.queue_free())
+	# el timer se detiene con la pausa (process_always = false) para que las particulas no desaparezcan
+	get_tree().create_timer(life + 0.4, false).timeout.connect(func():
+		_emitters -= 1
+		if is_instance_valid(p):
+			p.queue_free())
 
 func sparks(pos: Vector2, n: int, col := Color(1.0, 0.82, 0.48)) -> void:
+	if _emitters >= MAX_EMITTERS:
+		return
 	var p := CPUParticles2D.new()
 	p.amount = n
 	p.lifetime = 0.45
@@ -26,10 +54,12 @@ func sparks(pos: Vector2, n: int, col := Color(1.0, 0.82, 0.48)) -> void:
 	p.texture = K.glow_tex()
 	p.material = K.additive()
 	p.color = col
-	p.color_ramp = K.fade_ramp(Color(1, 1, 1, 1), Color(1, 0.5, 0.2, 0))
+	p.color_ramp = K.ramp("spark", Color(1, 1, 1, 1), Color(1, 0.5, 0.2, 0))
 	_emit(p, 0.45, pos)
 
 func smoke(pos: Vector2, n: int, size := 40.0, col := Color(0.35, 0.3, 0.3, 0.55)) -> void:
+	if _emitters >= MAX_EMITTERS:
+		return
 	var p := CPUParticles2D.new()
 	p.amount = n
 	p.lifetime = 1.1
@@ -41,19 +71,15 @@ func smoke(pos: Vector2, n: int, size := 40.0, col := Color(0.35, 0.3, 0.3, 0.55
 	var s := size * 2.0 / 256.0
 	p.scale_amount_min = s * 0.6
 	p.scale_amount_max = s * 1.1
-	var curve := Curve.new()
-	curve.add_point(Vector2(0, 0.5))
-	curve.add_point(Vector2(1, 1.6))
-	p.scale_amount_curve = curve
+	p.scale_amount_curve = _smoke_curve
 	p.texture = K.soft_tex()
 	p.color = col
-	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
-	g.colors = PackedColorArray([Color(1, 1, 1, 0.0), Color(1, 1, 1, 1.0), Color(1, 1, 1, 0.0)])
-	p.color_ramp = g
+	p.color_ramp = _smoke_ramp
 	_emit(p, 1.1, pos, 150)
 
 func debris(pos: Vector2, n: int, col := Color(0.35, 0.28, 0.22)) -> void:
+	if _emitters >= MAX_EMITTERS:
+		return
 	var p := CPUParticles2D.new()
 	p.amount = n
 	p.lifetime = 0.9
@@ -68,10 +94,12 @@ func debris(pos: Vector2, n: int, col := Color(0.35, 0.28, 0.22)) -> void:
 	p.scale_amount_max = 1.5
 	p.texture = K.square_tex()
 	p.color = col
-	p.color_ramp = K.fade_ramp(Color(1, 1, 1, 1), Color(1, 1, 1, 0))
+	p.color_ramp = K.ramp("fade", Color(1, 1, 1, 1), Color(1, 1, 1, 0))
 	_emit(p, 0.9, pos)
 
 func fire(pos: Vector2, big := 1.0) -> void:
+	if _emitters >= MAX_EMITTERS + 8:
+		return
 	var p := CPUParticles2D.new()
 	p.amount = int(18 * big)
 	p.lifetime = 0.7
@@ -84,10 +112,7 @@ func fire(pos: Vector2, big := 1.0) -> void:
 	p.scale_amount_max = 0.9 * big
 	p.texture = K.glow_tex()
 	p.material = K.additive()
-	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
-	g.colors = PackedColorArray([Color(1.0, 0.9, 0.55, 1.0), Color(1.0, 0.45, 0.12, 0.8), Color(0.6, 0.1, 0.05, 0.0)])
-	p.color_ramp = g
+	p.color_ramp = _fire_ramp
 	_emit(p, 0.7, pos, 158)
 
 func ring(pos: Vector2, radius: float) -> void:
@@ -105,6 +130,9 @@ func ring(pos: Vector2, radius: float) -> void:
 	tw.chain().tween_callback(s.queue_free)
 
 func light_flash(pos: Vector2, energy := 2.0, scale := 6.0, col := Color(1.0, 0.7, 0.4), dur := 0.3) -> void:
+	if _lights >= MAX_LIGHTS:
+		return
+	_lights += 1
 	var l := PointLight2D.new()
 	l.texture = K.glow_tex()
 	l.texture_scale = scale
@@ -115,7 +143,9 @@ func light_flash(pos: Vector2, energy := 2.0, scale := 6.0, col := Color(1.0, 0.
 	add_child(l)
 	var tw := create_tween()
 	tw.tween_property(l, "energy", 0.0, dur)
-	tw.tween_callback(l.queue_free)
+	tw.tween_callback(func():
+		_lights -= 1
+		l.queue_free())
 
 func muzzle(pos: Vector2) -> void:
 	var s := Sprite2D.new()
@@ -126,7 +156,7 @@ func muzzle(pos: Vector2) -> void:
 	s.modulate = Color(1.0, 0.85, 0.5)
 	s.z_index = 210
 	add_child(s)
-	get_tree().create_timer(0.05).timeout.connect(func(): if is_instance_valid(s): s.queue_free())
+	get_tree().create_timer(0.05, false).timeout.connect(func(): if is_instance_valid(s): s.queue_free())
 	light_flash(pos, 1.4, 3.0, Color(1.0, 0.78, 0.45), 0.09)
 
 func tracer(a: Vector2, b: Vector2) -> void:
@@ -208,6 +238,6 @@ func ambient() -> void:
 	e.texture = K.glow_tex()
 	e.material = K.additive()
 	e.color = Color(1.0, 0.62, 0.25, 0.8)
-	e.color_ramp = K.fade_ramp(Color(1, 1, 1, 1), Color(1, 1, 1, 0))
+	e.color_ramp = K.ramp("fade", Color(1, 1, 1, 1), Color(1, 1, 1, 0))
 	add_child(e)
 	e.emitting = true
