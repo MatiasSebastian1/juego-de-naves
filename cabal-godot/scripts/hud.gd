@@ -1,6 +1,12 @@
 extends Control
 # Interfaz: HUD, pantallas de menu/pausa/game over, barra del jefe y mira.
 
+# Zonas clicables del menu de pausa (game.gd las usa para procesar los clicks)
+const BTN_RESUME := Rect2(490, 290, 300, 50)
+const BTN_RESTART := Rect2(490, 352, 300, 50)
+const BTN_MUTE := Rect2(490, 414, 300, 50)
+const VOL_BAR := Rect2(490, 524, 300, 14)
+
 var game
 var font: Font
 var panel_sb: StyleBoxFlat
@@ -66,17 +72,70 @@ func _hud(p) -> void:
 	if p.wt > 0.0:
 		_panel(Rect2(20, 106, 170, 32))
 		_t("%s %ds" % ["ESCOPETA" if p.weapon == "spread" else "RÁFAGA", int(p.wt)], 105, 129, 16, Color(0.31, 0.76, 1.0))
-	if p.roll_cd > 0.0:
-		var sp: Vector2 = p.position - game.cam.offset
-		draw_rect(Rect2(sp.x - 30, sp.y + 14, 60, 4), Color(1, 1, 1, 0.15))
-		draw_rect(Rect2(sp.x - 30, sp.y + 14, 60.0 * (1.0 - p.roll_cd / 0.95), 4), Color(0.5, 0.9, 1.0))
+	_dodge(p)
+	_warnings(p)
+	if pct < 0.3 and game.state == "play":
+		# vida baja: marco rojo que late
+		var a := 0.10 + (0.5 + sin(game.time * 7.0) * 0.5) * 0.16
+		draw_rect(Rect2(0, 0, 1280, 720), Color(1.0, 0.1, 0.1, a), false, 16.0)
+		_t("VIDA BAJA", 640, 700, 18, Color(1.0, 0.45, 0.4, 0.6 + a))
 	for e in game.enemies:
-		if e.type == "boss" and not e.dying:
+		if e.type == "boss" and not e.dying and game.state != "over":
 			_t("JEFE", 640, 132, 16, Color(1.0, 0.45, 0.4))
 			_bar(Rect2(390, 140, 500, 14), e.hp / e.max_hp, Color(0.9, 0.2, 0.2), Color(1.0, 0.45, 0.25))
-	if game.banner_t > 0.0:
+	if game.banner_t > 0.0 and game.state != "over":
 		var a := clampf(game.banner_t, 0.0, 1.0)
-		_t(game.banner_text, 640, 220, 64, Color(1.0, 0.83, 0.42, a))
+		_t(game.banner_text, 640, 220, 64 if game.banner_text.length() < 26 else 46, Color(1.0, 0.83, 0.42, a))
+	if game.toast_t > 0.0:
+		_t(game.toast_text, 640, 690, 20, Color(0.8, 0.95, 1.0, clampf(game.toast_t * 2.0, 0.0, 1.0)))
+
+# Indicador de esquiva: barra bajo el soldado mientras recarga, y panel fijo abajo a la izquierda.
+func _dodge(p) -> void:
+	var ready: bool = p.roll_cd <= 0.0
+	var k: float = 1.0 if ready else 1.0 - p.roll_cd / p.ROLL_CD
+	if not ready:
+		var sp: Vector2 = p.position - game.cam.offset
+		draw_rect(Rect2(sp.x - 30, sp.y + 14, 60, 4), Color(1, 1, 1, 0.15))
+		draw_rect(Rect2(sp.x - 30, sp.y + 14, 60.0 * k, 4), Color(0.5, 0.9, 1.0))
+	var pulse: float = clampf(p.roll_ready_t / 0.35, 0.0, 1.0)
+	_panel(Rect2(20, 664, 178, 40))
+	_t("ESQUIVAR", 32, 689, 13, Color(0.8, 0.87, 0.93), HORIZONTAL_ALIGNMENT_LEFT)
+	var col := Color(0.5, 0.9, 1.0).lerp(Color.WHITE, pulse) if ready else Color(0.45, 0.62, 0.7)
+	_bar(Rect2(112, 678, 74, 12), k, col, col)
+	if pulse > 0.0:
+		draw_rect(Rect2(110, 676, 78, 16), Color(0.7, 1.0, 1.0, pulse * 0.7), false, 2.0)
+
+# Avisos de peligro: circulo en el punto de impacto de balas dirigidas al jugador, "!" sobre su cabeza
+# cuando un impacto es inminente y flecha bajo los corredores que se acercan.
+func _warnings(p) -> void:
+	var off: Vector2 = game.cam.offset
+	var c: Vector2 = Vector2(p.position.x, p.position.y - 50.0)
+	var soon := 99.0
+	for b in game.shells:
+		if b.dead or b.own != "e":
+			continue
+		if b.kind == "b":
+			var d: float = b.tgt.distance_to(c)
+			if d < 95.0 and b.t > 0.2:
+				var left: float = (1.0 - b.t) * b.dur
+				soon = minf(soon, left)
+				var r := 16.0 + left * 26.0
+				draw_arc(b.tgt - off, r, 0.0, TAU, 20, Color(1.0, 0.3, 0.2, 0.85), 2.5)
+		else:
+			var dx: float = (p.position.x - b.tgt.x) / (b.rx * 1.25)
+			var dy: float = (p.position.y - b.tgt.y) / (b.ry * 1.25)
+			if dx * dx + dy * dy < 1.0:
+				soon = minf(soon, (1.0 - b.t) * b.dur)
+	if soon < 0.8 and game.state == "play":
+		var sp: Vector2 = Vector2(p.position.x, p.position.y - 170.0) - off
+		var a := 0.55 + sin(game.time * 24.0) * 0.4
+		_t("!", sp.x, sp.y, 44, Color(1.0, 0.3, 0.2, a))
+	for e in game.enemies:
+		if e.type == "runner" and not e.dying and e.z > 0.45:
+			var x: float = clampf(e.x - off.x, 30.0, 1250.0)
+			var a := 0.5 + sin(game.time * 16.0) * 0.4
+			var y := 712.0
+			draw_colored_polygon(PackedVector2Array([Vector2(x - 14, y), Vector2(x + 14, y), Vector2(x, y - 22)]), Color(1.0, 0.25, 0.2, a))
 
 func _screens() -> void:
 	match game.state:
@@ -86,22 +145,56 @@ func _screens() -> void:
 			_t("CABAL", 640, 200 + y, 140, Color(1.0, 0.7, 0.28))
 			_t("H D", 640, 270 + y, 54, Color(1.0, 0.35, 0.23))
 			_t("Resistí las oleadas, usá las barricadas y volá a los jefes.", 640, 340, 22, Color(0.87, 0.9, 0.94))
-			var lines := ["WASD / Flechas  ·  Moverte", "Mouse  ·  Apuntar          Click  ·  Disparar", "Click derecho / G  ·  Granada          Espacio  ·  Esquivar (invulnerable)", "Disparale a las balas grandes para destruirlas  ·  Tiros a la cabeza = x2", "P  ·  Pausa          F11  ·  Pantalla completa"]
+			var lines := ["WASD / Flechas  ·  Moverte", "Mouse  ·  Apuntar          Click  ·  Disparar", "Click derecho / G  ·  Granada          Espacio  ·  Esquivar (invulnerable)", "Disparale a las balas grandes para destruirlas  ·  Tiros a la cabeza = x2", "P / Esc  ·  Pausa          M  ·  Música          - / +  ·  Volumen          F11  ·  Pantalla completa"]
 			for i in lines.size():
 				_t(lines[i], 640, 400 + i * 32, 19, Color(0.73, 0.78, 0.85))
+			if game.hiscore > 0:
+				_t("RÉCORD  %d" % game.hiscore, 640, 580, 22, Color(1.0, 0.83, 0.42))
 			if int(game.time * 2.0) % 2 == 0:
-				_t("HACÉ CLICK PARA EMPEZAR", 640, 620, 34)
+				_t("HACÉ CLICK PARA EMPEZAR", 640, 640, 34)
 		"pause":
-			draw_rect(Rect2(0, 0, 1280, 720), Color(0.02, 0.025, 0.05, 0.6))
-			_t("PAUSA", 640, 360, 80)
-			_t("P para continuar", 640, 410, 22, Color(0.75, 0.85, 0.93))
+			draw_rect(Rect2(0, 0, 1280, 720), Color(0.02, 0.025, 0.05, 0.62))
+			_t("PAUSA", 640, 235, 80)
+			_button(BTN_RESUME, "CONTINUAR  (P)")
+			_button(BTN_RESTART, "REINICIAR  (R)")
+			_button(BTN_MUTE, "MÚSICA: NO  (M)" if game.sfx.muted else "MÚSICA: SÍ  (M)")
+			var lv: float = 0.0 if game.sfx.muted else game.sfx.level
+			_t("VOLUMEN  %d%%     ( -  /  + )" % int(round(game.sfx.level * 100.0)), 640, 512, 18, Color(0.75, 0.85, 0.93))
+			_bar(VOL_BAR, lv, Color(0.3, 0.7, 1.0), Color(0.5, 0.9, 1.0))
+			_t("Puntaje %d   ·   Oleada %d" % [game.score, game.wave], 640, 600, 22, Color(0.87, 0.9, 0.94))
 		"over":
-			draw_rect(Rect2(0, 0, 1280, 720), Color(0.08, 0.0, 0.0, 0.55))
-			_t("GAME OVER", 640, 270, 110, Color(1.0, 0.35, 0.3))
-			_t("Puntaje %d   ·   Oleada %d" % [game.score, game.wave], 640, 340, 32)
-			_t("¡NUEVO RÉCORD!" if (game.score >= game.hiscore and game.score > 0) else "Récord %d" % game.hiscore, 640, 385, 24, Color(1.0, 0.83, 0.42))
-			if int(game.time * 2.0) % 2 == 0:
-				_t("CLICK o ENTER para reintentar", 640, 470, 30)
+			draw_rect(Rect2(0, 0, 1280, 720), Color(0.08, 0.0, 0.0, 0.62))
+			_t("GAME OVER", 640, 140, 96, Color(1.0, 0.35, 0.3))
+			var rec: bool = game.rank_idx == 0
+			_t("¡NUEVO RÉCORD!  %d" % game.score if rec else "Puntaje  %d" % game.score, 640, 195, 34, Color(1.0, 0.83, 0.42) if rec else Color.WHITE)
+			# estadisticas de la partida
+			_panel(Rect2(210, 225, 400, 250))
+			_t("RESUMEN", 410, 258, 20, Color(0.6, 0.75, 0.9))
+			var secs := int(game.run_time)
+			var st := [["Oleada alcanzada", str(game.wave)], ["Bajas", str(game.kills)], ["Precisión", "%d%%" % game.accuracy()], ["Mejor combo", "%d bajas" % game.best_streak], ["Tiempo", "%d:%02d" % [secs / 60, secs % 60]]]
+			for i in st.size():
+				_t(st[i][0], 236, 304 + i * 36, 20, Color(0.8, 0.85, 0.9), HORIZONTAL_ALIGNMENT_LEFT)
+				_t(st[i][1], 584, 304 + i * 36, 22, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+			# ranking local
+			_panel(Rect2(670, 225, 400, 250))
+			_t("TOP 5", 870, 258, 20, Color(0.6, 0.75, 0.9))
+			for i in 5:
+				var col := Color(1.0, 0.83, 0.42) if i == game.rank_idx else Color(0.8, 0.85, 0.9)
+				if i < game.top.size():
+					var e: Dictionary = game.top[i]
+					_t("%d." % (i + 1), 696, 304 + i * 36, 20, col, HORIZONTAL_ALIGNMENT_LEFT)
+					_t(str(e["score"]), 800, 304 + i * 36, 22, col, HORIZONTAL_ALIGNMENT_LEFT)
+					_t(("Ol. %d" % e["wave"]) if e["wave"] > 0 else "", 1044, 304 + i * 36, 18, col, HORIZONTAL_ALIGNMENT_RIGHT)
+				else:
+					_t("%d.  ---" % (i + 1), 696, 304 + i * 36, 20, Color(0.5, 0.55, 0.6), HORIZONTAL_ALIGNMENT_LEFT)
+			if game.over_t > game.OVER_LOCK and int(game.time * 2.0) % 2 == 0:
+				_t("CLICK o ENTER para reintentar", 640, 550, 30)
+
+func _button(r: Rect2, label: String) -> void:
+	var hot: bool = r.has_point(game.mouse)
+	draw_rect(r, Color(0.15, 0.3, 0.42, 0.85) if hot else Color(0.03, 0.04, 0.06, 0.75))
+	draw_rect(r, Color(0.5, 0.9, 1.0, 0.9) if hot else Color(1, 1, 1, 0.2), false, 2.0)
+	_t(label, r.position.x + r.size.x / 2.0, r.position.y + 34.0, 24)
 
 func _crosshair() -> void:
 	var m: Vector2 = game.mouse

@@ -12,6 +12,8 @@ func _initialize() -> void:
 		out = args[0]
 	game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	root.add_child(game)
+	game.save_path = "user://shot_test.cfg"   # no pisar el ranking real
+	game._load_save()
 
 func _snap(n: String) -> void:
 	var img := root.get_texture().get_image()
@@ -38,6 +40,24 @@ func _process(delta: float) -> bool:
 	if frames == 160: _snap("g_play1")
 	if frames == 380: _snap("g_boss")
 	if frames == 520: _snap("g_play2")
-	if frames == 540:
+	# aviso de proyectil/granada dirigidos al jugador
+	if frames == 400 and game.state == "play":
+		var p = game.player
+		game._bullet(Vector2(p.position.x + 40, 380), Vector2(p.position.x, p.position.y - 50), 1.6, 0.3, 8.0)
+		game._nade(Vector2(p.position.x - 200, 400), Vector2(p.position.x, p.position.y))
+	if frames == 425: _snap("g_warn")
+	# pausa
+	if frames == 545: game._set_pause(true)
+	if frames == 550: _snap("g_pause")
+	if frames == 551: game._set_pause(false)
+	# game over con estadisticas y ranking
+	if frames == 600:
+		game.score = 18450; game.kills = 42; game.best_streak = 11; game.run_time = 187.0
+		game.shots = 400; game.hits = 273
+		game.player.hp = 1.0; game.player.inv = 0.0
+		game.hurt_player(5.0)
+	if frames == 700: _snap("g_over")
+	if frames == 705:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://shot_test.cfg"))
 		quit(0)
 	return false

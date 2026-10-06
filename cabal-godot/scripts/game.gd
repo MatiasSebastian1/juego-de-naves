@@ -11,6 +11,8 @@ const Shell = preload("res://scripts/shell.gd")
 const Props = preload("res://scripts/props.gd")
 const POST = preload("res://shaders/post.gdshader")
 const SAVE_PATH := "user://cabalhd.cfg"
+const TOP_N := 5            # tamanos del ranking local
+const OVER_LOCK := 0.8      # segundos antes de aceptar "reintentar" tras morir (evita reinicios por click accidental)
 
 var state := "menu"
 var world: Node2D
@@ -46,11 +48,33 @@ var time := 0.0
 var mouse := Vector2(640, 200)
 var mouse_down := false
 
+# estadisticas de la partida (resumen de game over)
+var kills := 0
+var shots := 0
+var hits := 0
+var best_streak := 0
+var run_time := 0.0
+var over_t := 0.0
+var run_registered := false   # el puntaje de esta partida ya entro al ranking
+var save_path := SAVE_PATH    # las pruebas lo apuntan a un archivo temporal para no pisar el ranking real
+var top: Array = []           # ranking local: [{score, wave, kills, acc}]
+var rank_idx := -1            # posicion de esta partida en el ranking (-1 = no entro)
+var diff: Dictionary = K.diff(1)
+var wave_cleared := false
+var drop_pity := 0            # bajas sin drop: sube la probabilidad para que no haya rachas secas
+var toast_t := 0.0
+var toast_text := ""
+var _hit_any := false
+# efectos de tiempo (en milisegundos REALES, no afectados por Engine.time_scale)
+var _slow_end := 0
+var _stop_end := 0
+var _stop_cool := 0
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	randomize()
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
-	_load_hi()
+	K.preload_all()
 	world = Node2D.new()
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(world)
@@ -76,6 +100,7 @@ func _ready() -> void:
 	world.add_child(player)
 	sfx = Sfx.new()
 	add_child(sfx)
+	_load_save()
 	cam = Camera2D.new()
 	cam.position = Vector2(640, 360)
 	add_child(cam)
@@ -101,15 +126,65 @@ func _ready() -> void:
 	hl.add_child(hud)
 	reset_game()
 
-func _load_hi() -> void:
+# Lee ranking y ajustes de audio.  Tambien migra el viejo "record" unico si no hay ranking.
+func _load_save() -> void:
+	top.clear()
+	hiscore = 0
 	var c := ConfigFile.new()
-	if c.load(SAVE_PATH) == OK:
-		hiscore = int(c.get_value("game", "hi", 0))
+	if c.load(save_path) != OK:
+		return
+	var raw = c.get_value("scores", "top", [])
+	if raw is Array:
+		for e in raw:
+			if e is Dictionary and e.has("score"):
+				top.append({"score": int(e["score"]), "wave": int(e.get("wave", 0)), "kills": int(e.get("kills", 0)), "acc": int(e.get("acc", 0))})
+	if top.is_empty() and int(c.get_value("game", "hi", 0)) > 0:
+		top.append({"score": int(c.get_value("game", "hi", 0)), "wave": 0, "kills": 0, "acc": 0})
+	_sort_top()
+	hiscore = int(top[0]["score"]) if not top.is_empty() else 0
+	sfx.set_level(float(c.get_value("audio", "level", 0.7)))
+	sfx.set_muted(bool(c.get_value("audio", "muted", false)))
 
-func _save_hi() -> void:
+func _save() -> void:
 	var c := ConfigFile.new()
 	c.set_value("game", "hi", hiscore)
-	c.save(SAVE_PATH)
+	c.set_value("scores", "top", top)
+	c.set_value("audio", "level", sfx.level)
+	c.set_value("audio", "muted", sfx.muted)
+	c.save(save_path)
+
+func _sort_top() -> void:
+	top.sort_custom(func(a, b): return a["score"] > b["score"])
+	if top.size() > TOP_N:
+		top.resize(TOP_N)
+
+# Mete el puntaje de la partida actual al ranking (una sola vez por partida).
+func _register_run() -> void:
+	if run_registered:
+		return
+	run_registered = true
+	rank_idx = -1
+	if score <= 0:
+		return
+	var entry := {"score": score, "wave": wave, "kills": kills, "acc": accuracy()}
+	# insercion estable: ante empate queda por debajo del puntaje anterior
+	var i := 0
+	while i < top.size() and int(top[i]["score"]) >= score:
+		i += 1
+	if i < TOP_N:
+		top.insert(i, entry)
+		if top.size() > TOP_N:
+			top.resize(TOP_N)
+		rank_idx = i
+	hiscore = int(top[0]["score"]) if not top.is_empty() else score
+	_save()
+
+func accuracy() -> int:
+	return int(round(100.0 * hits / shots)) if shots > 0 else 0
+
+func show_toast(t: String) -> void:
+	toast_text = t
+	toast_t = 1.6
 
 func _free_all(arr: Array) -> void:
 	for n in arr:
@@ -124,7 +199,19 @@ func reset_game() -> void:
 	_free_all(crates)
 	_free_all(pickups)
 	queue.clear()
+	clear_time_fx()
 	player.reset()
+	kills = 0
+	shots = 0
+	hits = 0
+	best_streak = 0
+	run_time = 0.0
+	over_t = 0.0
+	run_registered = false
+	rank_idx = -1
+	wave_cleared = false
+	drop_pity = 0
+	diff = K.diff(1)
 	score = 0
 	streak = 0
 	combo_t = 0.0
@@ -137,6 +224,39 @@ func reset_game() -> void:
 	wave = 0
 	sfx.music_volume(-10.0)
 
+# ---------------------------------------------------------------- tiempo (hit-stop y camara lenta)
+# Se manejan con el reloj REAL y se reaplican cada frame, asi Engine.time_scale nunca queda trabado
+# (reinicio, pausa o game over durante un efecto lo dejan en 1.0).
+func hitstop(sec: float) -> void:
+	var now := Time.get_ticks_msec()
+	if now < _stop_cool:
+		return
+	_stop_end = now + int(sec * 1000.0)
+	_stop_cool = _stop_end + 140   # separacion minima para que no se encadene y se sienta trabado
+
+func _slowmo(sec := 0.9) -> void:
+	_slow_end = Time.get_ticks_msec() + int(sec * 1000.0)
+
+func clear_time_fx() -> void:
+	_slow_end = 0
+	_stop_end = 0
+	_stop_cool = 0
+	Engine.time_scale = 1.0
+
+func _time_fx() -> void:
+	var sc := 1.0
+	if state == "play" or state == "over":
+		var now := Time.get_ticks_msec()
+		if now < _stop_end:
+			sc = 0.05
+		elif now < _slow_end:
+			sc = 0.25
+	if Engine.time_scale != sc:
+		Engine.time_scale = sc
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
+
 func mult() -> int:
 	return mini(5, 1 + streak / 4)
 
@@ -146,10 +266,12 @@ func aim_world() -> Vector2:
 # ---------------------------------------------------------------- oleadas
 func start_wave(n: int) -> void:
 	wave = n
+	wave_cleared = false
+	diff = K.diff(n)
 	sfx.play("wave")
 	barricades = barricades.filter(func(b): return is_instance_valid(b) and b.hp > 0)
 	for b in barricades:
-		b.hp = minf(b.max_hp, b.hp + 6.0)
+		b.hp = minf(b.max_hp, b.hp + 8.0)
 	var xs := [200.0, 440.0, 840.0, 1080.0]
 	for xv in xs:
 		if barricades.size() >= 3:
@@ -170,15 +292,15 @@ func start_wave(n: int) -> void:
 		world.add_child(c)
 		crates.append(c)
 	queue.clear()
-	var count := 5 + n * 3
-	for i in count:
+	var M: Dictionary = K.mix(n)
+	for i in int(diff["count"]):
 		var r := randf()
 		var t := "rifle"
-		if n >= 2 and r < 0.2:
+		if r < M["grenadier"]:
 			t = "grenadier"
-		elif n >= 2 and r < 0.38:
+		elif r < M["grenadier"] + M["runner"]:
 			t = "runner"
-		elif n >= 4 and r < 0.5:
+		elif r < M["grenadier"] + M["runner"] + M["heavy"]:
 			t = "heavy"
 		queue.append(t)
 	if n % 5 == 0:
@@ -204,22 +326,34 @@ func shoot() -> void:
 	var pellets := 6 if w == "spread" else 1
 	var sp := 46.0 if w == "spread" else 5.0
 	var am := aim_world()
+	var tg := _targets()
+	shots += 1
+	_hit_any = false
 	for i in pellets:
 		var a := randf() * TAU
 		var r := sqrt(randf()) * sp
 		var tp := am + Vector2(cos(a), sin(a)) * r
-		var hit := hitscan(tp)
+		var hit := hitscan(tp, tg)
 		fx.tracer(player.muzzle, tp)
 		if not hit and tp.y > K.HOR:
 			fx.dust(tp, 1)
+	if _hit_any:
+		hits += 1
 	fx.muzzle(player.muzzle)
 	sfx.play("spread" if w == "spread" else "shot", -4.0 if w != "spread" else 0.0, 0.05)
 	shake_t = maxf(shake_t, 0.08 if w == "spread" else 0.02)
 
-func hitscan(tp: Vector2) -> bool:
+# Enemigos vivos ordenados del mas cercano al mas lejano (una vez por rafaga, no por perdigon).
+func _targets() -> Array:
+	var list := enemies.filter(func(e): return not e.dying)
+	list.sort_custom(func(a, b): return a.z > b.z)
+	return list
+
+func hitscan(tp: Vector2, tg: Array) -> bool:
 	for b in shells:
 		if b.kind == "b" and not b.dead and b.t > 0.35 and b.position.distance_to(tp) < 12.0 + b.t * 14.0:
 			b.dead = true
+			_hit_any = true
 			fx.sparks(b.position, 8, Color(1.0, 0.6, 0.32))
 			score += 10
 			sfx.play("hit", -6.0)
@@ -228,12 +362,13 @@ func hitscan(tp: Vector2) -> bool:
 		if not k.dead and absf(k.base.x - tp.x) < 34.0 and absf(k.base.y - 20.0 - tp.y) < 34.0:
 			collect(k)
 			return true
-	var list := enemies.filter(func(e): return not e.dying)
-	list.sort_custom(func(a, b): return a.z > b.z)
-	for e in list:
+	for e in tg:
+		if e.dying:
+			continue
 		var b: Dictionary = e.box()
 		if tp.x > b.x - b.w / 2.0 and tp.x < b.x + b.w / 2.0 and tp.y > b.y - b.h and tp.y < b.y:
 			var head: bool = tp.y < b.y - b.h * 0.78
+			_hit_any = true
 			damage_enemy(e, 2.0 if head else 1.0, tp, head)
 			return true
 	for c in crates:
@@ -277,12 +412,19 @@ func kill_enemy(e, silent: bool) -> void:
 	var b: Dictionary = e.box()
 	if not silent:
 		streak += 1
+		kills += 1
+		best_streak = maxi(best_streak, streak)
 		combo_t = 3.0
 		var pts: int = T["score"] * mult()
 		score += pts
 		fx.floater(Vector2(b.x, b.y - b.h - 8.0), "+%d%s" % [pts, ("  x%d" % mult()) if mult() > 1 else ""], Color(0.55, 0.93, 1.0))
-		if randf() < (0.5 if e.type == "heavy" else 0.1) or e.type == "boss":
-			drop_pickup(Vector2(b.x, b.y), false)
+		# drops: base por tipo + "pity" que crece con las bajas sin premio; el jefe siempre suelta algo
+		var base := 0.45 if e.type == "heavy" else 0.1
+		if e.type == "boss" or randf() < base + drop_pity * 0.02:
+			drop_pity = 0
+			drop_pickup(Vector2(b.x, b.y), true)
+		else:
+			drop_pity = mini(drop_pity + 1, 10)
 	var col := Color(0.42, 0.49, 0.32)
 	match e.type:
 		"grenadier": col = Color(0.54, 0.33, 0.25)
@@ -294,20 +436,45 @@ func kill_enemy(e, silent: bool) -> void:
 	if e.type == "boss":
 		explosion(Vector2(b.x, b.y - b.h / 2.0), 2.4)
 		queue = queue.filter(func(t): return t != "boss")
+		hitstop(0.12)
 		_slowmo()
 	else:
 		shake_t = maxf(shake_t, 0.08)
+		if e.type == "heavy" and not silent:
+			hitstop(0.06)
 
-func _slowmo() -> void:
-	Engine.time_scale = 0.25
-	get_tree().create_timer(0.9, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+# Tipo de drop con pesos: mas vida si el jugador esta herido, mas granadas si no le quedan.
+func _pick_kind() -> String:
+	var w := {"H": 1.0, "G": 1.0, "S": 1.0, "R": 1.0}
+	if player.hp < 45.0:
+		w["H"] += 2.5
+	elif player.hp < 70.0:
+		w["H"] += 1.0
+	if player.gren == 0:
+		w["G"] += 2.0
+	if player.weapon != "mg":
+		w["S"] = 0.4
+		w["R"] = 0.4
+	var tot := 0.0
+	for k in w:
+		tot += w[k]
+	var r := randf() * tot
+	for k in w:
+		r -= w[k]
+		if r <= 0.0:
+			return k
+	return "H"
 
-func drop_pickup(pos: Vector2, sure: bool) -> void:
-	if not sure and randf() < 0.35:
-		return
-	var kinds := ["H", "G", "S", "R"]
+func boss_enrage(e) -> void:
+	banner_text = "¡EL JEFE SE ENFURECE!"
+	banner_t = 1.6
+	shake_t = maxf(shake_t, 0.4)
+	flash_t = maxf(flash_t, 0.1)
+	sfx.play("wave", -2.0)
+
+func drop_pickup(pos: Vector2, _sure := true) -> void:
 	var k = Props.Pickup.new()
-	k.kind = kinds[randi() % 4]
+	k.kind = _pick_kind()
 	k.base = pos
 	world.add_child(k)
 	pickups.append(k)
@@ -393,13 +560,15 @@ func _nade(src: Vector2, tg: Vector2) -> void:
 func enemy_attack(e) -> void:
 	var b: Dictionary = e.box()
 	var src := Vector2(b.x, b.y - b.h * 0.62)
+	var fly: float = diff["fly"]
+	var dm: float = diff["dmg"] / 8.0   # escala de dano por oleada (1.0 en la oleada 1)
 	match e.type:
 		"rifle":
-			_bullet(src, _aim_at(26.0), randf_range(0.95, 1.35), e.z, 8.0)
+			_bullet(src, _aim_at(26.0), randf_range(0.95, 1.35) * fly, e.z, 8.0 * dm)
 			sfx.play("enemy", -8.0)
 		"heavy":
 			for i in 3:
-				_bullet(src, _aim_at(90.0 + i * 20.0), randf_range(0.95, 1.35), e.z, 12.0)
+				_bullet(src, _aim_at(90.0 + i * 20.0), randf_range(0.95, 1.35) * fly, e.z, 12.0 * dm)
 			sfx.play("enemy", -6.0)
 		"grenadier":
 			_nade(src, _aim_at(40.0))
@@ -409,10 +578,15 @@ func enemy_attack(e) -> void:
 			if e.pat % 3 == 0:
 				_nade(src, _aim_at(120.0))
 				_nade(src, _aim_at(160.0))
+				if e.enraged:
+					_nade(src, _aim_at(220.0))
 			else:
-				for i in range(-2, 3):
+				# furioso: abanico mas ancho (7 balas) con menos separacion
+				var n := 3 if e.enraged else 2
+				var sp := 100.0 if e.enraged else 120.0
+				for i in range(-n, n + 1):
 					var a := _aim_at(10.0)
-					_bullet(src, a + Vector2(i * 120.0, randf_range(-30.0, 30.0)), 1.15, e.z, 10.0)
+					_bullet(src, a + Vector2(i * sp, randf_range(-30.0, 30.0)), 1.15 * fly, e.z, 10.0 * dm)
 			shake_t = maxf(shake_t, 0.12)
 			sfx.play("enemy", -2.0)
 	fx.light_flash(src, 1.0, 2.5, Color(1.0, 0.45, 0.25), 0.12)
@@ -423,7 +597,9 @@ func hurt_player(d: float) -> void:
 		return
 	player.hp -= d
 	player.inv = 0.7
+	player.hit_t = 0.18
 	hurt_t = 0.5
+	hitstop(0.07)
 	streak = 0
 	shake_t = maxf(shake_t, 0.3)
 	sfx.play("hurt")
@@ -431,16 +607,19 @@ func hurt_player(d: float) -> void:
 	if player.hp <= 0.0:
 		player.hp = 0.0
 		state = "over"
+		over_t = 0.0
+		mouse_down = false
+		player.visible = false
 		sfx.play("over")
 		sfx.music_volume(-22.0)
 		explosion(player.position + Vector2(0, -50), 1.2)
-		if score > hiscore:
-			hiscore = score
-			_save_hi()
+		_register_run()
 
 # ---------------------------------------------------------------- bucle
 func _process(dt: float) -> void:
-	time += dt
+	_time_fx()
+	time += dt / maxf(Engine.time_scale, 0.01)   # reloj de interfaz (parpadeos) sin hit-stop
+	toast_t = maxf(0.0, toast_t - dt)
 	if state == "play" or state == "over":
 		update(dt)
 	var s := 0.0 if state == "pause" else shake_t * 22.0
@@ -452,6 +631,10 @@ func _process(dt: float) -> void:
 	hud.queue_redraw()
 
 func update(dt: float) -> void:
+	if state == "over":
+		over_t += dt
+	else:
+		run_time += dt
 	combo_t -= dt
 	if combo_t <= 0.0:
 		streak = 0
@@ -487,6 +670,9 @@ func update(dt: float) -> void:
 		c.tick(dt)
 	for k in pickups:
 		k.tick(dt)
+		# ademas de dispararles, se recogen caminando encima
+		if state == "play" and not k.dead and absf(k.base.x - player.position.x) < 48.0 and absf(k.base.y - player.position.y) < 44.0:
+			collect(k)
 	_cleanup()
 
 func _waves(dt: float) -> void:
@@ -494,20 +680,35 @@ func _waves(dt: float) -> void:
 	for e in enemies:
 		if not e.dying:
 			alive += 1
-	if queue.is_empty() and alive == 0 and banner_t <= 0.0:
-		wave_delay -= dt
-		if wave_delay <= 0.0:
-			if wave > 0:
-				score += wave * 250
-				player.hp = minf(player.max_hp, player.hp + 15.0)
-				player.gren = mini(9, player.gren + 1)
-			start_wave(wave + 1)
-			wave_delay = 2.2
+	if queue.is_empty() and alive == 0:
+		if wave == 0:
+			wave_delay -= dt
+			if wave_delay <= 0.0:
+				start_wave(1)
+		elif not wave_cleared:
+			if banner_t <= 0.0:
+				_wave_clear()
+		else:
+			wave_delay -= dt
+			if wave_delay <= 0.0:
+				start_wave(wave + 1)
 	elif not queue.is_empty():
 		spawn_t -= dt
-		if spawn_t <= 0.0 and alive < 4 + wave / 2:
+		if spawn_t <= 0.0 and alive < int(diff["alive"]):
 			spawn(queue.pop_front())
-			spawn_t = maxf(0.5, 1.6 - wave * 0.08)
+			spawn_t = diff["gap"]
+
+# Oleada superada: bonus de puntaje, curacion y granadas (mas tras un jefe).
+func _wave_clear() -> void:
+	wave_cleared = true
+	var bonus := wave * 250
+	score += bonus
+	player.hp = minf(player.max_hp, player.hp + 20.0)
+	player.gren = mini(9, player.gren + (3 if wave % 5 == 0 else 1))
+	banner_text = "¡OLEADA %d SUPERADA!  +%d" % [wave, bonus]
+	banner_t = 1.6
+	wave_delay = 1.0
+	sfx.play("pickup")
 
 func _shells(dt: float) -> void:
 	for b in shells:
@@ -541,6 +742,7 @@ func _shells(dt: float) -> void:
 				b.dead = true
 				explosion(b.tgt, 1.1 if b.own == "p" else 0.9)
 				if b.own == "p":
+					var nade_hit := false
 					for e in enemies:
 						if e.dying:
 							continue
@@ -548,6 +750,9 @@ func _shells(dt: float) -> void:
 						var d := Vector2(e.x, bx.y - bx.h / 2.0).distance_to(b.tgt)
 						if d < b.rx + bx.w * 0.4:
 							damage_enemy(e, 12.0 if e.type == "boss" else 8.0, Vector2(e.x, bx.y - bx.h / 2.0), false)
+							nade_hit = true
+					if nade_hit:
+						hitstop(0.05)
 					for o in shells:
 						if o.kind == "b" and not o.dead and o.cur.distance_to(b.tgt) < b.rx:
 							o.dead = true
@@ -576,45 +781,96 @@ func _break_barricade(br) -> void:
 	sfx.play("boom", -6.0)
 	shake_t = maxf(shake_t, 0.2)
 
+# Libera y quita de las listas todo lo que ya termino (sin comparar arrays entre si).
 func _cleanup() -> void:
-	for arr in [shells, barricades, crates, pickups]:
-		for i in range(arr.size() - 1, -1, -1):
-			var n = arr[i]
-			var gone := false
-			if arr == shells:
-				gone = n.dead
-			elif arr == barricades:
-				gone = n.hp <= 0.0
-			elif arr == crates:
-				gone = n.dead
-			else:
-				gone = n.dead or n.life <= 0.0
-			if gone:
-				n.queue_free()
-				arr.remove_at(i)
+	for i in range(shells.size() - 1, -1, -1):
+		if shells[i].dead:
+			shells[i].queue_free()
+			shells.remove_at(i)
+	for i in range(barricades.size() - 1, -1, -1):
+		if barricades[i].hp <= 0.0:
+			barricades[i].queue_free()
+			barricades.remove_at(i)
+	for i in range(crates.size() - 1, -1, -1):
+		if crates[i].dead:
+			crates[i].queue_free()
+			crates.remove_at(i)
+	for i in range(pickups.size() - 1, -1, -1):
+		if pickups[i].dead or pickups[i].life <= 0.0:
+			pickups[i].queue_free()
+			pickups.remove_at(i)
 
 # ---------------------------------------------------------------- entrada
 func start_game() -> void:
+	get_tree().paused = false
 	reset_game()
 	state = "play"
+	mouse_down = false
 	sfx.start_music()
 
+# Reinicia desde la pausa: la partida en curso entra al ranking antes de empezar otra.
+func restart_run() -> void:
+	_register_run()
+	start_game()
+
 func _set_pause(p: bool) -> void:
+	if p and state != "play":
+		return
+	if not p and state != "pause":
+		return
 	state = "pause" if p else "play"
 	get_tree().paused = p
+	sfx.music_volume(-18.0 if p else -10.0)
+	clear_time_fx()
+	if p:
+		mouse_down = false
+	else:
+		mouse_down = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+
+func _set_volume(v: float) -> void:
+	sfx.set_level(v)
+	if sfx.muted and v > 0.0:
+		sfx.set_muted(false)
+	show_toast("MÚSICA %d%%" % int(round(sfx.level * 100.0)))
+	_save()
+
+func _toggle_mute() -> void:
+	sfx.set_muted(not sfx.muted)
+	show_toast("MÚSICA SILENCIADA" if sfx.muted else "MÚSICA %d%%" % int(round(sfx.level * 100.0)))
+	_save()
+
+# Clicks sobre los botones del menu de pausa.
+func _pause_click(pos: Vector2) -> void:
+	if Hud.BTN_RESUME.has_point(pos):
+		_set_pause(false)
+	elif Hud.BTN_RESTART.has_point(pos):
+		restart_run()
+	elif Hud.BTN_MUTE.has_point(pos):
+		_toggle_mute()
+	elif Hud.VOL_BAR.grow(6.0).has_point(pos):
+		_set_volume(clampf((pos.x - Hud.VOL_BAR.position.x) / Hud.VOL_BAR.size.x, 0.0, 1.0))
 
 func _input(ev: InputEvent) -> void:
 	if ev is InputEventMouseMotion:
 		mouse = Vector2(clampf(ev.position.x, 0.0, 1280.0), clampf(ev.position.y, 0.0, 720.0))
 	elif ev is InputEventMouseButton:
 		mouse = Vector2(clampf(ev.position.x, 0.0, 1280.0), clampf(ev.position.y, 0.0, 720.0))
+		# la rueda del mouse tambien genera "pressed": solo cuentan izquierdo y derecho
+		if ev.button_index != MOUSE_BUTTON_LEFT and ev.button_index != MOUSE_BUTTON_RIGHT:
+			return
 		if ev.pressed:
-			if state == "menu" or state == "over":
+			if state == "menu" or (state == "over" and over_t > OVER_LOCK):
 				start_game()
+				return
+			if state == "pause":
+				if ev.button_index == MOUSE_BUTTON_LEFT:
+					_pause_click(mouse)
+				return
+			if state != "play":
 				return
 			if ev.button_index == MOUSE_BUTTON_LEFT:
 				mouse_down = true
-			elif ev.button_index == MOUSE_BUTTON_RIGHT:
+			else:
 				throw_grenade()
 		elif ev.button_index == MOUSE_BUTTON_LEFT:
 			mouse_down = false
@@ -626,9 +882,19 @@ func _input(ev: InputEvent) -> void:
 					_set_pause(true)
 				elif state == "pause":
 					_set_pause(false)
-			KEY_ENTER, KEY_KP_ENTER:
-				if state == "menu" or state == "over":
+			KEY_R:
+				if state == "pause":
+					restart_run()
+				elif state == "over" and over_t > OVER_LOCK:
 					start_game()
+			KEY_ENTER, KEY_KP_ENTER:
+				if state == "menu" or (state == "over" and over_t > OVER_LOCK):
+					start_game()
+				elif state == "pause":
+					_set_pause(false)
+			KEY_M: _toggle_mute()
+			KEY_MINUS, KEY_KP_SUBTRACT, KEY_BRACKETLEFT: _set_volume(sfx.level - 0.1)
+			KEY_EQUAL, KEY_KP_ADD, KEY_BRACKETRIGHT: _set_volume(sfx.level + 0.1)
 			KEY_F11:
 				var m := DisplayServer.window_get_mode()
 				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if m == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
