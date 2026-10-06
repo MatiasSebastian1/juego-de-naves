@@ -2,3 +2,4 @@
 .import/
 *.translation
 .DS_Store
+build/
