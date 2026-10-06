@@ -1,0 +1,37 @@
+; Cabal 3D - shooter de tercera persona en Godot 4.2 (GL Compatibility)
+config_version=5
+
+[application]
+
+config/name="Cabal 3D"
+config/description="Shooter de tercera persona low-poly: patio industrial al atardecer, cobertura, oleadas y jefes."
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.2", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[layer_names]
+
+3d_physics/layer_1="mundo"
+3d_physics/layer_2="jugador"
+3d_physics/layer_3="enemigos"
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+environment/defaults/default_clear_color=Color(0.05, 0.04, 0.06, 1)
+textures/vram_compression/import_etc2_astc=true
