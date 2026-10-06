@@ -11,12 +11,39 @@ var game
 var font: Font
 var panel_sb: StyleBoxFlat
 
+const FONT_PATH := "res://assets/third_party/kenney/fonts/Kenney Future.ttf"
+const TITLE_SHADER = preload("res://shaders/title.gdshader")
+
+var title: Control
+
+# Capa del titulo: el material con el brillo animado solo afecta a estos trazos.
+class Title extends Control:
+	var hud
+	func _draw() -> void:
+		if hud == null or hud.game == null or hud.game.state != "menu":
+			return
+		hud.draw_title(self)
+
 func _ready() -> void:
-	var f := SystemFont.new()
-	f.font_names = PackedStringArray(["Impact", "Arial Black", "Segoe UI", "Roboto", "DejaVu Sans", "sans-serif"])
-	f.font_weight = 800
-	f.fallbacks = [ThemeDB.fallback_font]
-	font = f
+	var sysf := SystemFont.new()
+	sysf.font_names = PackedStringArray(["Impact", "Arial Black", "Segoe UI", "Roboto", "DejaVu Sans", "sans-serif"])
+	sysf.font_weight = 800
+	sysf.fallbacks = [ThemeDB.fallback_font]
+	font = sysf
+	# fuente Kenney Future (CC0) con respaldo en la del sistema para los caracteres que no tenga (acentos)
+	if ResourceLoader.exists(FONT_PATH):
+		var ff = load(FONT_PATH)
+		if ff is Font:
+			ff.fallbacks = [sysf]
+			font = ff
+	title = Title.new()
+	title.hud = self
+	title.set_anchors_preset(Control.PRESET_FULL_RECT)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tm := ShaderMaterial.new()
+	tm.shader = TITLE_SHADER
+	title.material = tm
+	add_child(title)
 	panel_sb = StyleBoxFlat.new()
 	panel_sb.bg_color = Color(0.03, 0.04, 0.06, 0.66)
 	panel_sb.set_corner_radius_all(12)
@@ -30,7 +57,7 @@ func _t(s: String, x: float, y: float, size: int, col := Color.WHITE, align := H
 		px = x
 	elif align == HORIZONTAL_ALIGNMENT_RIGHT:
 		px = x - w
-	draw_string_outline(font, Vector2(px, y), s, align, w, size, maxi(4, size / 5), Color(0, 0, 0, 0.8))
+	draw_string_outline(font, Vector2(px, y), s, align, w, size, maxi(3, size / 9), Color(0, 0, 0, 0.8))
 	draw_string(font, Vector2(px, y), s, align, w, size, col)
 
 func _panel(r: Rect2) -> void:
@@ -48,6 +75,9 @@ func _draw() -> void:
 	if game == null:
 		return
 	var p = game.player
+	title.visible = game.state == "menu"
+	if title.visible:
+		title.queue_redraw()
 	if game.state != "menu":
 		_hud(p)
 	_screens()
@@ -140,18 +170,17 @@ func _warnings(p) -> void:
 func _screens() -> void:
 	match game.state:
 		"menu":
-			draw_rect(Rect2(0, 0, 1280, 720), Color(0.02, 0.025, 0.05, 0.55))
-			var y := sin(game.time * 2.0) * 6.0
-			_t("CABAL", 640, 200 + y, 140, Color(1.0, 0.7, 0.28))
-			_t("H D", 640, 270 + y, 54, Color(1.0, 0.35, 0.23))
-			_t("Resistí las oleadas, usá las barricadas y volá a los jefes.", 640, 340, 22, Color(0.87, 0.9, 0.94))
+			# velo con degradado: oscuro abajo (texto legible) y mas claro arriba (se ve el fondo animado)
+			draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(1280, 0), Vector2(1280, 720), Vector2(0, 720)]),
+				PackedColorArray([Color(0.02, 0.02, 0.05, 0.25), Color(0.02, 0.02, 0.05, 0.25), Color(0.02, 0.02, 0.05, 0.78), Color(0.02, 0.02, 0.05, 0.78)]))
+			_t("Resistí las oleadas, usá las barricadas y volá a los jefes.", 640, 345, 20, Color(0.87, 0.9, 0.94))
 			var lines := ["WASD / Flechas  ·  Moverte", "Mouse  ·  Apuntar          Click  ·  Disparar", "Click derecho / G  ·  Granada          Espacio  ·  Esquivar (invulnerable)", "Disparale a las balas grandes para destruirlas  ·  Tiros a la cabeza = x2", "P / Esc  ·  Pausa          M  ·  Música          - / +  ·  Volumen          F11  ·  Pantalla completa"]
 			for i in lines.size():
-				_t(lines[i], 640, 400 + i * 32, 19, Color(0.73, 0.78, 0.85))
+				_t(lines[i], 640, 410 + i * 32, 17, Color(0.73, 0.78, 0.85))
 			if game.hiscore > 0:
-				_t("RÉCORD  %d" % game.hiscore, 640, 580, 22, Color(1.0, 0.83, 0.42))
-			if int(game.time * 2.0) % 2 == 0:
-				_t("HACÉ CLICK PARA EMPEZAR", 640, 640, 34)
+				_t("RÉCORD  %d" % game.hiscore, 640, 585, 22, Color(1.0, 0.83, 0.42))
+			var pulse := 0.65 + 0.35 * sin(game.time * 4.0)
+			_t("HACÉ CLICK PARA EMPEZAR", 640, 645, 30, Color(1, 1, 1, 0.55 + 0.45 * pulse))
 		"pause":
 			draw_rect(Rect2(0, 0, 1280, 720), Color(0.02, 0.025, 0.05, 0.62))
 			_t("PAUSA", 640, 235, 80)
@@ -189,6 +218,21 @@ func _screens() -> void:
 					_t("%d.  ---" % (i + 1), 696, 304 + i * 36, 20, Color(0.5, 0.55, 0.6), HORIZONTAL_ALIGNMENT_LEFT)
 			if game.over_t > game.OVER_LOCK and int(game.time * 2.0) % 2 == 0:
 				_t("CLICK o ENTER para reintentar", 640, 550, 30)
+
+# Titulo del menu (se dibuja en la capa `Title`, con brillo animado por shader).
+func draw_title(c: Control) -> void:
+	var y := sin(game.time * 2.0) * 5.0
+	var pulse := 0.5 + 0.5 * sin(game.time * 2.6)
+	var cx := 640.0
+	# resplandor: contornos cada vez mas anchos y tenues, en naranja
+	for i in 5:
+		var w := 14 + i * 9
+		var a := (0.10 - i * 0.016) * (0.7 + 0.5 * pulse)
+		c.draw_string_outline(font, Vector2(cx - 600.0, 215 + y), "CABAL", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 112, w, Color(1.0, 0.45, 0.12, a))
+	c.draw_string_outline(font, Vector2(cx - 600.0, 215 + y), "CABAL", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 112, 12, Color(0.12, 0.03, 0.02, 0.95))
+	c.draw_string(font, Vector2(cx - 600.0, 215 + y), "CABAL", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 112, Color(1, 1, 1))
+	c.draw_string_outline(font, Vector2(cx - 600.0, 285 + y), "H D", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 54, 8, Color(0.12, 0.02, 0.02, 0.95))
+	c.draw_string(font, Vector2(cx - 600.0, 285 + y), "H D", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 54, Color(1, 1, 1))
 
 func _button(r: Rect2, label: String) -> void:
 	var hot: bool = r.has_point(game.mouse)

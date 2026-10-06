@@ -1,6 +1,6 @@
 extends SceneTree
 # Captura de pantallas durante una partida simulada (requiere render real, p. ej. xvfb + opengl3).
-#   godot --path . --script res://tests/shot_test.gd -- /ruta/salida
+#   godot --rendering-driver opengl3 --fixed-fps 60 --path . --script res://tests/shot_test.gd -- /ruta/salida
 
 var game
 var frames := 0
@@ -40,6 +40,8 @@ func _process(delta: float) -> bool:
 	if frames == 160: _snap("g_play1")
 	if frames == 380: _snap("g_boss")
 	if frames == 520: _snap("g_play2")
+	if frames == 500: game.explosion(Vector2(760, 470), 1.2)
+	if frames == 508: _snap("g_boom")
 	# aviso de proyectil/granada dirigidos al jugador
 	if frames == 400 and game.state == "play":
 		var p = game.player

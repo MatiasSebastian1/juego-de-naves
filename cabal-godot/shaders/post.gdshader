@@ -6,8 +6,8 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float hurt = 0.0;
 uniform float flash = 0.0;
 uniform float time_s = 0.0;
-uniform float bloom_amt = 0.5;
-uniform float bloom_thr = 0.6;
+uniform float bloom_amt = 0.2;
+uniform float bloom_thr = 0.82;
 uniform float dof_amt = 0.6;
 uniform float grain_amt = 0.03;
 // fuentes de calor: xy = centro (uv), z = radio (alto de pantalla), w = intensidad
@@ -52,8 +52,7 @@ vec3 bright_tap(vec2 uv, float lod) {
 	return c * smoothstep(bloom_thr, bloom_thr + 0.3, l);
 }
 
-vec3 bloom(vec2 uv) {
-	vec2 px = SCREEN_PIXEL_SIZE;
+vec3 bloom(vec2 uv, vec2 px) {
 	vec3 acc = vec3(0.0);
 	float lods[4] = float[4](2.0, 3.0, 4.0, 5.5);
 	float wts[4] = float[4](0.34, 0.3, 0.22, 0.14);
@@ -83,23 +82,23 @@ void fragment() {
 	float dof = (1.0 - smoothstep(0.10, 0.40, uv.y)) * dof_amt;
 	float lod = dof * 1.8;
 	// aberracion cromatica: casi nula al centro, crece hacia los bordes
-	float ca = 0.0004 + r2 * r2 * 0.05 + r2 * 0.0035 + hurt * 0.004;
+	float ca = 0.0002 + r2 * r2 * 0.012 + r2 * 0.0008 + hurt * 0.004;
 	vec3 col;
 	col.r = textureLod(screen_tex, uv + d * ca, lod).r;
 	col.g = textureLod(screen_tex, uv, lod).g;
 	col.b = textureLod(screen_tex, uv - d * ca, lod).b;
 
 	// bloom
-	col += bloom(uv) * bloom_amt;
+	col += bloom(uv, SCREEN_PIXEL_SIZE) * bloom_amt;
 
 	// correccion de color: contraste en S, saturacion y tono dividido (sombras frias, luces calidas)
 	float luma = dot(col, vec3(0.299, 0.587, 0.114));
-	col = mix(vec3(luma), col, 1.14);
+	col = mix(vec3(luma), col, 1.04);
 	col = mix(col, col * col * (3.0 - 2.0 * col), 0.30);
 	float sh = 1.0 - smoothstep(0.0, 0.45, luma);
 	float hi = smoothstep(0.4, 0.95, luma);
 	col *= mix(vec3(1.0), vec3(0.88, 0.99, 1.14), sh * 0.55);
-	col *= mix(vec3(1.0), vec3(1.10, 1.0, 0.86), hi * 0.5);
+	col *= mix(vec3(1.0), vec3(1.06, 1.0, 0.92), hi * 0.4);
 	// recorte suave de altas luces
 	vec3 over = max(col - 0.82, vec3(0.0));
 	col = min(col, vec3(0.82)) + 0.18 * (vec3(1.0) - exp(-over / 0.18));

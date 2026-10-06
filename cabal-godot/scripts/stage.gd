@@ -7,9 +7,12 @@ const K = preload("res://scripts/k.gd")
 const LAYER = preload("res://shaders/layer.gdshader")
 const WISPS = preload("res://shaders/wisps.gdshader")
 
-const AMBIENT := Color(0.66, 0.62, 0.80)
-const SUN_COLOR := Color(1.0, 0.72, 0.46)
-const SUN_ENERGY := 0.95
+# Con mapas de normales el sol modula por relieve: ambiente mas oscuro y sol mas fuerte.  Sin ellos, valores planos clasicos.
+const AMBIENT_LIT := Color(0.78, 0.74, 0.88)
+const SUN_ENERGY_LIT := 0.62
+const AMBIENT := Color(0.84, 0.80, 0.92)
+const SUN_COLOR := Color(1.0, 0.74, 0.5)
+const SUN_ENERGY := 0.30
 const SUN_HEIGHT := 0.38
 const SUN_ROT := 0.62            # la luz viaja hacia abajo-izquierda (viene del sol, arriba a la derecha)
 const LAYER_SCALE := 0.56
@@ -33,14 +36,22 @@ var heats: Array = []            # [{pos: Vector2, age: float, life: float, str:
 
 func setup() -> void:
 	modulate_node = CanvasModulate.new()
-	modulate_node.color = AMBIENT
+	var normals: bool = K.lit and K.has("player_body_n") and K.has("enemy_rifle_idle_n")
+	modulate_node.color = AMBIENT_LIT if normals else AMBIENT
 	add_child(modulate_node)
 	sun = DirectionalLight2D.new()
 	sun.color = SUN_COLOR
-	sun.energy = SUN_ENERGY
+	sun.energy = SUN_ENERGY_LIT if normals else SUN_ENERGY
 	sun.height = SUN_HEIGHT
 	sun.rotation = SUN_ROT
+	sun.range_item_cull_mask = 1   # solo sprites (con relieve)
 	add_child(sun)
+	# El fondo (capa de luz 2) recibe un sol plano aparte, para conservar sus colores originales.
+	var bgsun := DirectionalLight2D.new()
+	bgsun.color = Color(1.0, 0.82, 0.62)
+	bgsun.energy = 0.42
+	bgsun.range_item_cull_mask = 2
+	add_child(bgsun)
 
 	layered = K.has("bg_sky") and K.has("bg_far") and K.has("bg_mid") and K.has("bg_ground")
 	if layered:
@@ -51,6 +62,7 @@ func setup() -> void:
 			spr.position = Vector2(640, 360)
 			spr.scale = Vector2.ONE * LAYER_SCALE
 			spr.z_index = z
+			spr.light_mask = 2
 			spr.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			if L[2] > 0.0 or L[3] > 0.0:
 				var m := ShaderMaterial.new()
@@ -67,6 +79,7 @@ func setup() -> void:
 		single_bg = Sprite2D.new()
 		single_bg.texture = K.tex("background")
 		single_bg.position = Vector2(640, 360)
+		single_bg.light_mask = 2
 		single_bg.scale = Vector2.ONE * 0.56
 		single_bg.z_index = -100
 		single_bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -121,7 +134,7 @@ func _add_flare() -> void:
 	var ring: Texture2D = K.ring_tex()
 	# [textura, posicion sobre el eje (0 = sol, 1 = centro, >1 mas alla), tamano px, alfa, color]
 	var defs := [
-		[core, 0.0, 620.0, 0.5, Color(1.0, 0.82, 0.6)],
+		[core, 0.0, 520.0, 0.26, Color(1.0, 0.82, 0.6)],
 		[ghost, 0.55, 90.0, 0.10, Color(1.0, 0.6, 0.35)],
 		[ring, 0.95, 220.0, 0.06, Color(0.8, 0.9, 1.0)],
 		[ghost, 1.35, 150.0, 0.07, Color(0.6, 0.8, 1.0)],

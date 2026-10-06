@@ -330,7 +330,9 @@ func shoot() -> void:
 			fx.dust(tp, 1)
 	if _hit_any:
 		hits += 1
-	fx.muzzle(player.muzzle)
+	fx.muzzle(player.muzzle, player.gun_angle)
+	fx.shell_eject(player.position + PlayerS.SHOULDER + Vector2(cos(player.gun_angle), sin(player.gun_angle)) * 40.0, player.gun_angle, player.position.y - 8.0)
+	player.recoil = 1.0
 	sfx.play("spread" if w == "spread" else "shot", -4.0 if w != "spread" else 0.0, 0.05)
 	shake_t = maxf(shake_t, 0.08 if w == "spread" else 0.02)
 
@@ -511,7 +513,8 @@ func explosion(pos: Vector2, big := 1.0) -> void:
 	fx.sparks(pos, int(26 * big))
 	fx.debris(pos, int(10 * big))
 	fx.ring(pos, 150.0 * big)
-	fx.light_flash(pos, 2.6 * big, 9.0 * big, Color(1.0, 0.65, 0.35), 0.45)
+	fx.scorch(pos + Vector2(0, 10), 150.0 * big)
+	fx.light_flash(pos, 1.5 * big, 6.5 * big, Color(1.0, 0.62, 0.32), 0.42)
 	stage.shock(pos, minf(1.6, 0.7 + big * 0.4))
 	stage.heat(pos + Vector2(0, -20), 0.9, minf(1.5, 0.8 * big))
 	shake_t = maxf(shake_t, 0.35 * big)

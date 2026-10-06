@@ -17,6 +17,7 @@ var rx := 130.0
 var ry := 46.0
 var dead := false
 var marker: Node2D
+var trail: Array = []   # ultimas posiciones (para la estela luminosa de las balas)
 
 class Marker extends Node2D:
 	var rx := 130.0
@@ -55,15 +56,27 @@ func _ready() -> void:
 	position = cur
 
 func refresh() -> void:
+	if kind == "b":
+		trail.push_front(cur)
+		if trail.size() > 7:
+			trail.pop_back()
 	position = cur
 	queue_redraw()
 
 func _draw() -> void:
 	if kind == "b":
 		var s := 3.0 + t * 11.0
+		# estela: segmentos que se afinan y se apagan hacia atras, mas el rastro lineal original
+		var last := Vector2.ZERO
+		for i in trail.size():
+			var q: Vector2 = trail[i] - position
+			var k := 1.0 - float(i) / trail.size()
+			if i > 0:
+				draw_line(last, q, Color(1.0, 0.5 + 0.3 * k, 0.2, 0.55 * k), s * 0.9 * k)
+			last = q
 		draw_line(prev - position, Vector2.ZERO, Color(1.0, 0.59, 0.27, 0.7), s * 0.6)
 		draw_texture_rect(K.glow_tex(), Rect2(-s * 3.0, -s * 3.0, s * 6.0, s * 6.0), false, Color(1.0, 0.43, 0.16, 0.9))
-		draw_circle(Vector2.ZERO, s * 0.55, Color(1, 1, 1))
+		draw_circle(Vector2.ZERO, s * 0.55, Color(1.0, 0.97, 0.85))
 	else:
 		var s := 7.0 + t * 7.0
 		draw_circle(Vector2.ZERO, s, Color(0.145, 0.145, 0.17))

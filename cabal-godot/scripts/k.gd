@@ -24,8 +24,8 @@ static var lit := true   # usar mapas de normales (<nombre>_n.png) cuando exista
 # Sol: posicion en pantalla (para destellos), inclinacion de las sombras proyectadas y su aplastamiento.
 # El sol esta arriba a la derecha y casi sobre el horizonte, asi que las sombras caen hacia el jugador, a la izquierda.
 const SUN_POS := Vector2(760.0, 120.0)
-const SHADOW_SKEW := -0.62
-const SHADOW_SQUASH := 0.34
+const SHADOW_SKEW := -0.85
+const SHADOW_SQUASH := 0.38
 
 # ---------------------------------------------------------------- dificultad
 # Parametros de una oleada n (1..15 y mas alla, con tope).  Todo escala suave para no ser injusto:
@@ -83,6 +83,11 @@ static func preload_all() -> void:
 	for n in ["crate_raw", "player_body", "player_gun", "background"]:
 		tex(n)
 	streak_tex()
+	for fam in [["muzzle", 5], ["smoke", 10], ["fire", 2], ["flame", 6], ["spark", 7], ["scorch", 3]]:
+		for i in fam[1]:
+			kp("%s_%02d" % [fam[0], i + 1])
+	for n in ["circle_05", "light_01", "light_02", "light_03", "trace_01", "trace_02"]:
+		kp(n)
 	glow_tex()
 	soft_tex()
 	shadow_tex()
@@ -113,6 +118,18 @@ static func tex(n: String) -> Texture2D:
 		else:
 			_tex[n] = base
 	return _tex[n]
+
+# Texturas CC0 de Kenney (assets/third_party/kenney/particles).  Devuelve null si no estan.
+static func kp(n: String) -> Texture2D:
+	var key := "kp_" + n
+	if not _tex.has(key):
+		var path := "res://assets/third_party/kenney/particles/%s.png" % n
+		_tex[key] = load(path) if ResourceLoader.exists(path) else null
+	return _tex[key]
+
+# Una textura al azar de una familia ("smoke", 8) -> smoke_01..smoke_08, o null.
+static func kp_rand(fam: String, count: int) -> Texture2D:
+	return kp("%s_%02d" % [fam, 1 + randi() % count])
 
 # Material compartido de las sombras proyectadas (copia aplastada, oscura y suave del sprite).
 static func shadow_mat() -> ShaderMaterial:
