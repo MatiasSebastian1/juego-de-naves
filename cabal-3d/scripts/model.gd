@@ -70,12 +70,27 @@ func _build_anims(letter: String) -> void:
 	anim.remove_animation_library("")
 	anim.add_animation_library("", own)
 
+# Desplazamiento lateral del arma (a un costado del cuerpo para que se vea desde la camara sobre el hombro).
+const WEAPON_SIDE := -0.52
+
+# Apunta el arma hacia un punto del mundo (la boca mira a +Z del soporte).
+func aim_weapon(target: Vector3) -> void:
+	if weapon_holder == null or not is_instance_valid(weapon_holder):
+		return
+	var d := target - weapon_holder.global_position
+	if d.length() < 2.0:
+		return
+	var want := Basis.looking_at(-d.normalized(), Vector3.UP)
+	var par := weapon_holder.get_parent() as Node3D
+	var local := par.global_transform.basis.orthonormalized().inverse() * want
+	weapon_holder.basis = weapon_holder.basis.orthonormalized().slerp(local.orthonormalized(), 0.6)
+
 func give_weapon(name: String, length := 1.7, tint := Color.WHITE) -> void:
 	if weapon_holder:
 		weapon_holder.queue_free()
 	weapon_holder = Node3D.new()
 	torso.add_child(weapon_holder)
-	weapon_holder.position = Vector3(0.0, 1.02, 0.0)
+	weapon_holder.position = Vector3(WEAPON_SIDE, 1.16, 0.0)
 	weapon = Assets.inst(BLASTER_DIR + name + ".glb")
 	Assets.make_lit(weapon, tint, 0.7)
 	weapon_holder.add_child(weapon)

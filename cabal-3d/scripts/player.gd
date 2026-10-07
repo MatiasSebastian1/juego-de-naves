@@ -5,9 +5,9 @@ extends CharacterBody3D
 const Model = preload("res://scripts/model.gd")
 
 const WEAPONS := {
-	"rifle": {"name": "RIFLE", "rate": 0.105, "dmg": 22.0, "pellets": 1, "spread": 0.7, "kick": 0.55, "sound": "shot", "gun": "blaster-a", "len": 1.55, "tracer": Color(1.0, 0.86, 0.5)},
-	"spread": {"name": "ESCOPETA", "rate": 0.78, "dmg": 12.0, "pellets": 9, "spread": 4.6, "kick": 2.4, "sound": "spread", "gun": "blaster-d", "len": 1.7, "tracer": Color(1.0, 0.7, 0.35)},
-	"burst": {"name": "RAFAGA", "rate": 0.058, "dmg": 15.0, "pellets": 1, "spread": 1.3, "kick": 0.4, "sound": "shot", "gun": "blaster-e", "len": 1.9, "tracer": Color(0.5, 0.9, 1.0)},
+	"rifle": {"name": "RIFLE", "rate": 0.105, "dmg": 22.0, "pellets": 1, "spread": 0.7, "kick": 0.55, "sound": "shot", "gun": "blaster-a", "len": 2.0, "tracer": Color(1.0, 0.86, 0.5)},
+	"spread": {"name": "ESCOPETA", "rate": 0.78, "dmg": 12.0, "pellets": 9, "spread": 4.6, "kick": 2.4, "sound": "spread", "gun": "blaster-d", "len": 2.1, "tracer": Color(1.0, 0.7, 0.35)},
+	"burst": {"name": "RAFAGA", "rate": 0.058, "dmg": 15.0, "pellets": 1, "spread": 1.3, "kick": 0.4, "sound": "shot", "gun": "blaster-e", "len": 2.2, "tracer": Color(0.5, 0.9, 1.0)},
 }
 
 var game
@@ -348,6 +348,8 @@ func _physics_process(delta: float) -> void:
 		start_reload()
 	# --- apuntado (rayo desde el centro de la camara)
 	aim_hit = aim_ray()
+	if not aim_hit.is_empty() and not dead:
+		model.aim_weapon(aim_hit.pos)
 	var c = aim_hit.collider
 	aim_over_enemy = c != null and c.is_in_group("enemy")
 	# --- orientacion del modelo
@@ -404,7 +406,7 @@ func _update_camera(delta: float) -> void:
 		jz = randf_range(-a, a) * 0.6
 	pitch_node.rotation = Vector3(pitch + recoil + jx, jy, jz)
 	spring.spring_length = lerpf(4.1, 3.0, aim_k)
-	camera.h_offset = lerpf(1.0, 1.15, aim_k)
+	camera.h_offset = lerpf(1.25, 1.4, aim_k)
 	camera.v_offset = lerpf(0.2, 0.15, aim_k)
 	camera.fov = lerpf(70.0, 56.0, aim_k)
 
@@ -463,7 +465,7 @@ func _shoot(d: Dictionary) -> void:
 	yaw += randf_range(-0.0016, 0.0016) * d.kick
 	shake = maxf(shake, 0.12 + d.kick * 0.06)
 	model.kick()
-	fx.muzzle(origin + (target - origin).normalized() * 0.25, 0.9 if weapon == "spread" else 0.62)
+	fx.muzzle(origin + (target - origin).normalized() * 0.2, 1.5 if weapon == "spread" else 1.05)
 	flash_light_t = 0.05
 	mlight.global_position = origin
 	game.sfx.play(d.sound, -4.0 if weapon == "rifle" else -2.0, 0.05)

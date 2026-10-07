@@ -279,11 +279,17 @@ func tracer(a: Vector3, b: Vector3, col: Color, w := 0.035, life := 0.07) -> voi
 	_ti = (_ti + 1) % tracers.size()
 	var n: MeshInstance3D = t.n
 	n.visible = true
-	n.global_transform = Transform3D(Basis.looking_at((b - a).normalized(), Vector3.UP).scaled(Vector3(w, w, len)), (a + b) * 0.5)
-	(n.material_override as StandardMaterial3D).albedo_color = col
-	t.t = life
-	t.life = life
+	t.a = a
+	t.dir = (b - a).normalized()
+	t.total = len
+	t.head = 0.0
+	t.speed = 170.0
+	t.streak = minf(6.0, len)
+	t.w = maxf(w * 1.5, 0.05)
+	t.t = 1.0
+	t.life = 1.0
 	t.col = col
+	(n.material_override as StandardMaterial3D).albedo_color = col
 
 func sparks(pos: Vector3, normal: Vector3, big := false) -> void:
 	if Assets.headless:
@@ -462,14 +468,18 @@ func _process(delta: float) -> void:
 		return
 	for t in tracers:
 		if t.t > 0.0:
-			t.t -= delta
 			var n: MeshInstance3D = t.n
-			if t.t <= 0.0:
+			t.head += t.speed * delta
+			var tail: float = t.head - t.streak
+			if tail >= t.total:
+				t.t = 0.0
 				n.visible = false
 			else:
-				var c: Color = t.col
-				c.a = clampf(t.t / t.life, 0.0, 1.0)
-				(n.material_override as StandardMaterial3D).albedo_color = c
+				var s0: float = maxf(0.0, tail)
+				var s1: float = minf(t.total, t.head)
+				var seg: float = maxf(0.05, s1 - s0)
+				var mid: Vector3 = t.a + t.dir * ((s0 + s1) * 0.5)
+				n.global_transform = Transform3D(Basis.looking_at(t.dir, Vector3.UP).scaled(Vector3(t.w, t.w, seg)), mid)
 	for m in muzzles:
 		if m.t > 0.0:
 			m.t -= delta
