@@ -19,6 +19,8 @@ func _snap(n: String) -> void:
 	root.get_texture().get_image().save_png("%s/%s.png" % [out, n])
 
 func _process(delta: float) -> bool:
+	if not game.ready_done:
+		return false
 	frames += 1
 	var p = game.player
 	if frames == 31:
@@ -27,7 +29,11 @@ func _process(delta: float) -> bool:
 		game.inter_t = 99.0
 		game.manual = true
 	if frames == 60:
-		var e = game.spawn_enemy("rifleman", Vector3(2.5, 0, -9))
+		# enemigo congelado a 9 m, un poco a la derecha de la mira del jugador
+		var lv = game.level
+		var fwd := Vector3(-sin(lv.start_yaw), 0, -cos(lv.start_yaw))
+		var right := Vector3(cos(lv.start_yaw), 0, -sin(lv.start_yaw))
+		var e = game.spawn_enemy("rifleman", lv.nearest_free(lv.start_pos + fwd * 9.0 + right * 2.5))
 		e.set_physics_process(false)
 		p.in_fire = true
 	if frames in [90, 93, 96, 99, 140]:

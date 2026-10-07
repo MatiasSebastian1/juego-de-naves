@@ -80,8 +80,10 @@ var p_crouch := false
 
 func _ready() -> void:
 	collision_layer = 2
-	collision_mask = 1
-	floor_snap_length = 0.3
+	collision_mask = 1 | 8        # mundo + limites invisibles del area jugable
+	floor_snap_length = 0.55      # el terreno de la arena es irregular
+	floor_max_angle = deg_to_rad(50.0)
+	floor_constant_speed = true
 	capsule = CapsuleShape3D.new()
 	capsule.radius = 0.38
 	capsule.height = 1.8
@@ -144,11 +146,11 @@ func reset() -> void:
 	recoil = 0.0
 	shake = 0.0
 	velocity = Vector3.ZERO
-	position = Vector3(0, 0.05, 18)
-	yaw = 0.0
+	position = level.start_pos + Vector3(0, 0.08, 0)
+	yaw = level.start_yaw
 	pitch = -0.13
-	face_yaw = PI
-	model.rotation.y = PI
+	face_yaw = yaw + PI
+	model.rotation.y = face_yaw
 	rot_pivot.rotation = Vector3.ZERO
 	model.scale = Vector3.ONE
 	model.play("idle_h", 0.0)
@@ -330,10 +332,11 @@ func _physics_process(delta: float) -> void:
 	elif velocity.y < 0.0:
 		velocity.y = -1.0
 	move_and_slide()
-	if absf(position.x) > 29.5:
-		position.x = signf(position.x) * 29.5
-	if absf(position.z) > 29.5:
-		position.z = signf(position.z) * 29.5
+	var lim: float = level.half - 0.5
+	if absf(position.x) > lim:
+		position.x = signf(position.x) * lim
+	if absf(position.z) > lim:
+		position.z = signf(position.z) * lim
 	var hspd := Vector2(velocity.x, velocity.z).length()
 	# --- acciones
 	if p_reload:

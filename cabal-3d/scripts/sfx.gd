@@ -28,7 +28,9 @@ func _ready() -> void:
 		pool3d.append(p3)
 	music = AudioStreamPlayer.new()
 	var m = load("res://assets/audio/music.wav")
-	if m is AudioStreamWAV:
+	# music.wav se importa en ADPCM con bucle activado en el .import (edit/loop_mode=2); si llegara sin bucle
+	# (PCM), se activa aqui
+	if m is AudioStreamWAV and m.loop_mode == AudioStreamWAV.LOOP_DISABLED and m.format != AudioStreamWAV.FORMAT_IMA_ADPCM:
 		m.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		m.loop_begin = 0
 		var bytes := 2 if m.format == AudioStreamWAV.FORMAT_16_BITS else 1

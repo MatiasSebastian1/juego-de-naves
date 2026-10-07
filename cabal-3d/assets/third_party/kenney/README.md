@@ -12,13 +12,15 @@ originales vienen "unlit").
 |---|---|---|
 | `characters/` | Blocky Characters | jugador y enemigos (`character-m/k/d/g/o/h.glb` + `Textures/`) |
 | `blasters/` | Blaster Kit | armas del jugador y enemigos, granada, items de drop |
-| `survival/` | Survival Kit | cajas, barriles, paneles metalicos, vallas, rocas, escombros, fogatas |
-| `city/` | City Kit (Industrial) | edificios, chimeneas, contenedores, tanques, torre de agua, molino |
+| `survival/` | Survival Kit | cajas, barriles, paneles metalicos, vallas, rocas y fogatas (cobertura baja de la arena) |
 | `particles/` | Particle Pack | fogonazos, llamas, humo, chispas, resplandores, marcas de quemadura |
 | `fonts/` | Kenney Fonts | Kenney Future (interfaz) |
 
 Los efectos de sonido (`assets/audio/*.wav`) son los mismos de `cabal-godot/` (sintetizados y mezclados con
 Impact Sounds / Sci-fi Sounds de Kenney, tambien CC0).
+
+Se retiraron del proyecto los modelos que ya no se usan (City Kit completo y parte del Survival Kit) para achicar
+el ejecutable: la arena actual es la aldea de Meshy (`assets/meshy/`).
 
 Nota tecnica: los `.glb.import` de estos modelos tienen `meshes/force_disable_compression=true`. Con la
 compresion de mallas de Godot 4.2 (renderer Compatibility) las coordenadas UV mayores a 1 que usan los GLB de

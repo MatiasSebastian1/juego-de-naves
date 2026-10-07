@@ -246,8 +246,19 @@ func _make_boom() -> Dictionary:
 	add_child(light)
 	return {"fire": fire, "smoke": smoke, "sparks": sp, "ring": ring, "light": light, "t": 99.0, "r": 4.0}
 
+var motes: CPUParticles3D
+
+# ajusta la nube de polvo ambiente al tamano del area jugable
+func fit_motes(half: float) -> void:
+	if motes == null:
+		return
+	motes.emission_box_extents = Vector3(half, 4.5, half)
+	motes.amount = int(clampf(130.0 * (half / 32.0) * (half / 32.0), 130.0, 320.0))
+	motes.restart()
+
 func _make_motes() -> void:
 	var p := CPUParticles3D.new()
+	motes = p
 	p.amount = 130
 	p.lifetime = 10.0
 	p.preprocess = 10.0
@@ -325,13 +336,19 @@ func muzzle(pos: Vector3, size := 0.7) -> void:
 	n.visible = true
 	m.t = 0.05
 
+# altura del suelo bajo `pos` (el terreno de la arena no es plano)
+func _gy(pos: Vector3) -> float:
+	if game != null and game.level != null:
+		return game.level.ground_y(pos)
+	return 0.0
+
 func scorch(pos: Vector3, radius: float) -> void:
 	if Assets.headless:
 		return
 	var s = scorches[_ci]
 	_ci = (_ci + 1) % scorches.size()
 	var n: MeshInstance3D = s.n
-	n.global_position = Vector3(pos.x, 0.03 + 0.002 * _ci, pos.z)
+	n.global_position = Vector3(pos.x, _gy(pos) + 0.06 + 0.002 * _ci, pos.z)
 	n.scale = Vector3(radius * 2.4, radius * 2.4, 1.0)
 	n.rotation.y = randf() * TAU
 	n.visible = true
@@ -342,7 +359,7 @@ func explosion(pos: Vector3, radius: float) -> void:
 		return
 	var b = boom_pool[_bi]
 	_bi = (_bi + 1) % boom_pool.size()
-	var gp := Vector3(pos.x, maxf(pos.y, 0.0) + 0.4, pos.z)
+	var gp := Vector3(pos.x, maxf(pos.y, _gy(pos)) + 0.4, pos.z)
 	for k in ["fire", "smoke", "sparks"]:
 		var p: CPUParticles3D = b[k]
 		p.global_position = gp
@@ -352,7 +369,7 @@ func explosion(pos: Vector3, radius: float) -> void:
 	f.scale_amount_min = radius * 0.5
 	f.scale_amount_max = radius * 0.85
 	var ring: MeshInstance3D = b.ring
-	ring.global_position = Vector3(pos.x, 0.08, pos.z)
+	ring.global_position = Vector3(pos.x, _gy(pos) + 0.14, pos.z)
 	ring.scale = Vector3(radius, 1, radius)
 	ring.visible = true
 	(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(1.0, 0.7, 0.4, 1.0))
@@ -385,7 +402,7 @@ func make_ring(pos: Vector3, radius: float, col := Color(1.0, 0.25, 0.1)) -> Mes
 	ring.material_override = sm
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(ring)
-	ring.global_position = Vector3(pos.x, 0.07, pos.z)
+	ring.global_position = Vector3(pos.x, _gy(pos) + 0.13, pos.z)
 	return ring
 
 # fuego con llamas, humo, chispas que suben y luz que parpadea

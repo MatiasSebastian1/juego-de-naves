@@ -218,7 +218,7 @@ func _screens() -> void:
 				draw_string_outline(font, Vector2(40, 170 + y), "CABAL 3D", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 104, 12 + i * 8, Color(1.0, 0.45, 0.12, 0.10 - i * 0.02))
 			draw_string_outline(font, Vector2(40, 170 + y), "CABAL 3D", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 104, 12, Color(0.12, 0.03, 0.02, 0.95))
 			draw_string(font, Vector2(40, 170 + y), "CABAL 3D", HORIZONTAL_ALIGNMENT_CENTER, 1200.0, 104, Color(1, 0.96, 0.9))
-			_t("Sobreviví 15 oleadas en el patio. Usá la cobertura.", 640, 232, 20, Color(0.95, 0.88, 0.8))
+			_t("Sobreviví 15 oleadas en %s. Usá la cobertura." % ("la aldea" if game.level.meshy else "el patio"), 640, 232, 20, Color(0.95, 0.88, 0.8))
 			var lines := ["WASD  ·  Mover          SHIFT  ·  Correr          MOUSE  ·  Apuntar", "CLICK IZQ  ·  Disparar          CLICK DER  ·  Apuntar de cerca", "R  ·  Recargar          G  ·  Granada          C / CTRL  ·  Agacharse", "ESPACIO  ·  Rodar (invulnerable) / saltar          P / ESC  ·  Pausa", "M  ·  Música          - / +  ·  Volumen          [ / ]  ·  Sensibilidad          F11  ·  Pantalla completa"]
 			for i in lines.size():
 				_t(lines[i], 640, 470 + i * 30, 16, Color(0.78, 0.82, 0.88))

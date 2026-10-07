@@ -71,7 +71,7 @@ func _physics_process(delta: float) -> void:
 				vel = Vector3.ZERO
 		else:
 			global_position = to
-		if global_position.y < 0.1:
+		if not level.meshy and global_position.y < 0.1:
 			global_position.y = 0.1
 			vel.y = absf(vel.y) * 0.35
 			vel.x *= 0.7
@@ -80,6 +80,9 @@ func _physics_process(delta: float) -> void:
 				rest = true
 		if model:
 			model.rotation += Vector3(7.0, 3.0, 5.0) * delta * (0.0 if rest else 1.0)
+	if global_position.y < -60.0:
+		explode()     # cayo fuera del mundo
+		return
 	# parpadeo cada vez mas rapido
 	var rate := 6.0 + age * 6.0
 	if blink:

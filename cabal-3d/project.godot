@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="Cabal 3D"
-config/description="Shooter de tercera persona low-poly: patio industrial al atardecer, cobertura, oleadas y jefes."
+config/description="Shooter de tercera persona low-poly: aldea del desierto al atardecer (arena de Meshy AI), cobertura, oleadas y jefes."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.2", "GL Compatibility")
 config/icon="res://icon.svg"
@@ -21,6 +21,7 @@ window/stretch/aspect="keep"
 3d_physics/layer_1="mundo"
 3d_physics/layer_2="jugador"
 3d_physics/layer_3="enemigos"
+3d_physics/layer_4="limite"
 
 [physics]
 

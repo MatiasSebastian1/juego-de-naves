@@ -2,26 +2,29 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cr6bfftriqtnb"
-path="res://.godot/imported/circle_05.png-751d930c459d732db6231eae42fce73a.ctex"
+uid="uid://qydqurb2b6cw"
+path="res://.godot/imported/oasis_village_texture_0.jpg-8a9688b860ff9609ea9b85727f5a97dd.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "615d03b9cc92985c9a804e9c0e077afb"
 }
 
 [deps]
 
-source_file="res://assets/third_party/kenney/particles/circle_05.png"
-dest_files=["res://.godot/imported/circle_05.png-751d930c459d732db6231eae42fce73a.ctex"]
+source_file="res://assets/meshy/oasis_village_texture_0.jpg"
+dest_files=["res://.godot/imported/oasis_village_texture_0.jpg-8a9688b860ff9609ea9b85727f5a97dd.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.8
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -30,5 +33,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=256
+process/size_limit=0
 detect_3d/compress_to=0

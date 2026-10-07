@@ -74,6 +74,7 @@ var hurt_amt := 0.0
 var bot_t := 0.0
 var bot_strafe := 1.0
 var bot_gren_t := 6.0
+var ready_done := false      # false mientras se hornea la navegacion de la arena (un frame de fisica)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -87,6 +88,11 @@ func _ready() -> void:
 	level = Level.new()
 	world.add_child(level)
 	level.build(fx)
+	if level.meshy:
+		# la fisica solo responde a consultas tras un frame: horneado de navegacion de la arena Meshy
+		await get_tree().physics_frame
+		level.bake()
+		fx.fit_motes(level.half)
 	enemies_root = Node3D.new()
 	world.add_child(enemies_root)
 	proj_root = Node3D.new()
@@ -125,6 +131,7 @@ func _ready() -> void:
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hl.add_child(hud)
 	_load_save()
+	ready_done = true
 	_enter_menu()
 
 func _enter_menu() -> void:
@@ -292,6 +299,8 @@ func _save() -> void:
 # ---------------------------------------------------------------- entrada
 
 func _input(event: InputEvent) -> void:
+	if not ready_done:
+		return
 	if event is InputEventMouseMotion:
 		if state == "play" and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not bot:
 			player.look(event.relative)
@@ -374,7 +383,7 @@ func _pause_click(p: Vector2) -> void:
 		sfx.set_level((p.x - Hud.VOL_BAR.position.x) / Hud.VOL_BAR.size.x)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and state == "play" and not bot:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and ready_done and state == "play" and not bot:
 		set_pause(true)
 
 func _read_intents() -> void:
@@ -439,6 +448,8 @@ func _bot_intents(delta: float) -> void:
 # ---------------------------------------------------------------- bucle
 
 func _physics_process(delta: float) -> void:
+	if not ready_done:
+		return
 	time += delta
 	if state != "play":
 		if state == "over":
@@ -473,6 +484,8 @@ func _physics_process(delta: float) -> void:
 		_update_time_scale()
 
 func _process(delta: float) -> void:
+	if not ready_done:
+		return
 	hurt_amt = maxf(0.0, hurt_amt - delta * 2.4)
 	var low := 0.0
 	if state == "play" and player.hp < 30.0 and not player.dead:
@@ -481,10 +494,13 @@ func _process(delta: float) -> void:
 	post_mat.set_shader_parameter("time_s", time)
 	post_mat.set_shader_parameter("low_hp", low)
 	if state == "menu":
+		# camara del menu: orbita lenta cerca del punto de inicio, mirando hacia donde mira el jugador
 		var a := time * 0.12
-		var c := Vector3(0, 1.3, 15.0)
-		menu_cam.global_position = c + Vector3(sin(a) * 3.5 + 3.6, 1.0 + sin(a * 0.7) * 0.4, 6.0 + cos(a) * 1.2)
-		menu_cam.look_at(Vector3(0, 1.5, 12.0), Vector3.UP)
+		var sp: Vector3 = level.start_pos
+		var f := Vector3(-sin(level.start_yaw), 0.0, -cos(level.start_yaw))
+		var r := Vector3(cos(level.start_yaw), 0.0, -sin(level.start_yaw))
+		menu_cam.global_position = sp + Vector3(0, 2.3 + sin(a * 0.7) * 0.4, 0) - f * (3.0 + cos(a) * 1.2) + r * (3.6 + sin(a) * 3.5)
+		menu_cam.look_at(sp + f * 6.0 + Vector3(0, 1.5, 0), Vector3.UP)
 	if state == "over" and not player.dead:
 		pass
 
@@ -554,7 +570,7 @@ func _waves(delta: float) -> void:
 			var alive := alive_count()
 			if not queue.is_empty() and alive < _wave_cap(wave) and spawn_t <= 0.0:
 				var t: String = queue.pop_front()
-				spawn_enemy(t, level.spawn_pos(player.global_position, 18.0 if t != "boss" else 22.0))
+				spawn_enemy(t, level.spawn_pos(player.global_position, 18.0 if t != "boss" else 22.0, 1.6 if t != "boss" else 2.4))
 				spawn_t = maxf(0.55, 1.7 - 0.07 * wave) * (3.0 if t == "boss" else 1.0)
 			if queue.is_empty() and alive == 0:
 				_wave_clear()

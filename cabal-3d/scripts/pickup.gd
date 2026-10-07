@@ -22,7 +22,7 @@ var base_y := 0.9
 func setup(k: String, pos: Vector3) -> void:
 	kind = k
 	var d: Dictionary = KINDS[k]
-	global_position = Vector3(pos.x, 0.0, pos.z)
+	global_position = pos
 	model = Assets.inst(BL + d.model + ".glb")
 	Assets.make_lit(model, Color(1, 1, 1))
 	var bb := Assets.aabb_of(model)

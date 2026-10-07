@@ -3,7 +3,9 @@ extends SceneTree
 # enemigo y el jefe, oleadas 1..15, drops, granadas, pausa, reinicio, game over, ranking persistido y que
 # Engine.time_scale siempre vuelva a su valor base.
 #   godot --headless --path . --script res://tests/smoke_test.gd
-# Imprime "RESULT ..." y sale con codigo 1 si algun chequeo falla.
+#   SMOKE_ARENA=kenney godot --headless --path . --script res://tests/smoke_test.gd    (patio Kenney de respaldo)
+# Imprime "RESULT ..." y sale con codigo 1 si algun chequeo falla. Con la arena Meshy ademas comprueba la navegacion
+# horneada: puntos de aparicion, suelo, rutas, linea de vision de los enemigos y limites.
 
 const TEST_SAVE := "user://smoke_test3d.cfg"
 
@@ -13,6 +15,8 @@ var fails := 0
 var checks := 0
 
 func _initialize() -> void:
+	if OS.get_environment("SMOKE_ARENA") == "kenney":
+		preload("res://scripts/level.gd").force_fallback = true
 	game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	root.add_child(game)
 	game.time_base = 6.0     # simula 6x mas rapido que el tiempo real
@@ -57,6 +61,278 @@ func _process(delta: float) -> bool:
 		_run()
 	return false
 
+# capsula de un enemigo estandar en `pos` (algo elevada): true si no toca la geometria del mundo
+func _clear_of_world(pos: Vector3, r := 0.42, h := 1.84) -> bool:
+	var cap := CapsuleShape3D.new()
+	cap.radius = r
+	cap.height = h
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = cap
+	q.collision_mask = 1
+	q.transform = Transform3D(Basis(), pos + Vector3(0, h * 0.5 + 0.12, 0))
+	return game.world.get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
+
+# --- comprobaciones de la arena Meshy (navegacion horneada, suelo, rutas, limites)
+func _arena_checks() -> void:
+	var lv = game.level
+	var p = game.player
+	check(lv.village != null and lv.village.get_node_or_null("VillageBody") != null, "la aldea tiene cuerpo de colision (trimesh)")
+	check(lv.reach_cells >= 2500, "zona alcanzable amplia (%d celdas)" % lv.reach_cells)
+	check(lv.water_cells >= 1, "se detecto agua en el estanque (%d)" % lv.water_cells)
+	check(lv.spawn_points.size() >= 12, "puntos de aparicion repartidos (%d)" % lv.spawn_points.size())
+	check(lv.bake_ms < 8000, "horneado de navegacion rapido (%d ms)" % lv.bake_ms)
+	check(lv.is_free(lv.start_pos) and _clear_of_world(lv.start_pos, 0.38, 1.8), "el jugador empieza en espacio libre")
+	check(absf(lv.start_pos.y - lv.ground_y(lv.start_pos)) < 0.5, "el inicio esta sobre el suelo")
+	check(absf(p.global_position.y - lv.start_pos.y) < 0.6 and p.global_position.distance_to(lv.start_pos) < 1.0, "el jugador aparece en el inicio")
+	# cada punto de aparicion: celda libre, sobre el suelo, sin tocar edificios y con ruta hasta el jugador
+	var bad_free := 0
+	var bad_ground := 0
+	var bad_clear := 0
+	var bad_path := 0
+	for sp in lv.spawn_points:
+		if not lv.is_free(sp):
+			bad_free += 1
+		if absf(sp.y - lv.ground_y(sp)) > 0.5:
+			bad_ground += 1
+		if not _clear_of_world(sp):
+			bad_clear += 1
+		var pth: PackedVector3Array = lv.find_path(sp, lv.start_pos)
+		var ok := pth.size() >= 1 and pth[pth.size() - 1].distance_to(lv.nearest_free(lv.start_pos)) < 0.6
+		for q in pth:
+			if not lv.is_free(q):
+				ok = false
+		if not ok:
+			bad_path += 1
+	check(bad_free == 0, "todos los puntos de aparicion en celda libre (%d fallan)" % bad_free)
+	check(bad_ground == 0, "todos los puntos de aparicion sobre el suelo (%d fallan)" % bad_ground)
+	check(bad_clear == 0, "ningun punto de aparicion dentro de un edificio (%d fallan)" % bad_clear)
+	check(bad_path == 0, "todos los puntos de aparicion tienen ruta al jugador (%d fallan)" % bad_path)
+	# spawn_pos con el jugador en muchos lugares: libre, a distancia razonable y fuera de edificios
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 7
+	var free_cells: Array = []
+	for x in lv.gn:
+		for y in lv.gn:
+			if not lv.grid.is_point_solid(Vector2i(x, y)):
+				free_cells.append(lv._cell_pos(Vector2i(x, y)))
+	var sp_bad := 0
+	var sp_near := 0
+	for i in 300:
+		var pp: Vector3 = free_cells[rnd.randi() % free_cells.size()]
+		var s2: Vector3 = lv.spawn_pos(pp, 18.0)
+		if not lv.is_free(s2) or not _clear_of_world(s2) or absf(s2.y - lv.ground_y(s2)) > 0.5:
+			sp_bad += 1
+		if s2.distance_to(pp) < 14.0:
+			sp_near += 1
+	check(sp_bad == 0, "300 apariciones: libres, sobre el suelo y fuera de edificios (%d fallan)" % sp_bad)
+	check(sp_near < 30, "las apariciones no son encima del jugador (%d de 300 a menos de 14 m)" % sp_near)
+	# rutas entre celdas libres al azar
+	var path_bad := 0
+	for i in 60:
+		var a: Vector3 = free_cells[rnd.randi() % free_cells.size()]
+		var b: Vector3 = free_cells[rnd.randi() % free_cells.size()]
+		var pth: PackedVector3Array = lv.find_path(a, b)
+		if pth.is_empty() or pth[pth.size() - 1].distance_to(b) > 0.6:
+			path_bad += 1
+	check(path_bad == 0, "60 rutas aleatorias entre celdas libres (%d sin ruta)" % path_bad)
+	# las celdas libres son transitables: el suelo bajo ellas es una superficie caminable
+	var flat_bad := 0
+	for i in 200:
+		var c: Vector3 = free_cells[rnd.randi() % free_cells.size()]
+		if absf(c.y - lv.ground_y(c, 0.5)) > 0.9:
+			flat_bad += 1
+	check(flat_bad < 6, "altura de la grilla coincide con el suelo (%d de 200 discrepan)" % flat_bad)
+	# muros: un rayo contra un punto de cobertura de edificio choca; los props bajos tambien estan en el mundo
+	var walls := 0
+	var wall_hit := 0
+	for cp in lv.cover_points:
+		if not cp.low:
+			walls += 1
+			var from: Vector3 = cp.pos + Vector3(0, 1.2, 0)
+			var q := PhysicsRayQueryParameters3D.create(from, from - cp.dir * 4.0, 1)
+			if not game.world.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+				wall_hit += 1
+	check(walls >= 30 and wall_hit >= int(walls * 0.9), "puntos de cobertura en muros reales (%d de %d con pared detras)" % [wall_hit, walls])
+	# disparos bloqueados por edificios: rayo del inicio a traves de la casa mas cercana no llega al otro lado
+	var blocked := 0
+	for k in 12:
+		var a: Vector3 = free_cells[rnd.randi() % free_cells.size()] + Vector3(0, 1.4, 0)
+		var b: Vector3 = free_cells[rnd.randi() % free_cells.size()] + Vector3(0, 1.4, 0)
+		var q := PhysicsRayQueryParameters3D.create(a, b, 1)
+		if not game.world.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			blocked += 1
+	check(blocked >= 3, "los disparos se bloquean con edificios y muros (%d de 12 rayos)" % blocked)
+	# enemigos de todas las oleadas: sobre el suelo y en celda libre tras asentarse
+	var n_checked := 0
+	var e_floor := 0
+	var e_free := 0
+	var e_clear := 0
+	for wv in [1, 2, 3, 4, 5, 8, 10, 15]:
+		var q2: Array = game.compose(wv)
+		for i in mini(q2.size(), 12):
+			game.wave = wv
+			var e = game.spawn_enemy(q2[i], lv.spawn_pos(p.global_position, 22.0 if q2[i] == "boss" else 18.0, 2.4 if q2[i] == "boss" else 1.6))
+			e.set_physics_process(false)     # solo se comprueba el punto de aparicion
+		for e in game.enemies:
+			if not lv.is_free(e.global_position) or not _clear_of_world(e.global_position - Vector3(0, 0.08, 0), e.capsule.radius, e.capsule.height):
+				e_clear += 1
+		for e in game.enemies:
+			e.set_physics_process(true)
+		await sim(0.6)
+		for e in game.enemies:
+			n_checked += 1
+			if e.is_on_floor() and absf(e.global_position.y - lv.ground_y(e.global_position)) < 0.4:
+				e_floor += 1
+			if lv.is_free(e.global_position):
+				e_free += 1
+		kill_all()
+		await sim(0.2)
+		for e in game.enemies.duplicate():
+			if is_instance_valid(e):
+				e.queue_free()
+		game.enemies.clear()
+	check(n_checked > 60 and e_clear == 0, "%d enemigos de 8 oleadas aparecen en celda libre sin tocar edificios (%d fallan)" % [n_checked, e_clear])
+	check(e_floor >= n_checked - 1, "los enemigos quedan apoyados en el suelo (%d de %d)" % [e_floor, n_checked])
+	check(e_free >= n_checked - 2, "los enemigos siguen en celda libre tras asentarse (%d de %d)" % [e_free, n_checked])
+	# limites invisibles: el jugador no sale del area jugable
+	var edge: Vector3 = lv.open_spot(Vector2(lv.half - 6.0, 0.0), 2.0)
+	p.global_position = edge + Vector3(0, 0.1, 0)
+	p.velocity = Vector3.ZERO
+	game.manual = true
+	game.state = "play"
+	p.yaw = 0.0
+	p.in_move = Vector2(1, 0)
+	p.in_sprint = true
+	await sim(3.0)
+	p.in_move = Vector2.ZERO
+	p.in_sprint = false
+	check(absf(p.global_position.x) <= lv.half - 0.3, "el limite invisible frena al jugador (x=%.1f, limite %.1f)" % [p.global_position.x, lv.half])
+	game.state = "menu"
+	game.manual = false
+	p.global_position = lv.start_pos + Vector3(0, 0.1, 0)
+	await _player_walk_check()
+
+# el jugador (CharacterBody3D real) recorre rutas de la grilla sin atorarse ni atravesar paredes
+func _player_walk_check() -> void:
+	var lv = game.level
+	var p = game.player
+	game.state = "play"
+	game.manual = true
+	var rnd := RandomNumberGenerator.new()
+	rnd.seed = 11
+	var free_cells: Array = []
+	for x in lv.gn:
+		for y in lv.gn:
+			if lv.clearance[y * lv.gn + x] >= 2.0:
+				free_cells.append(lv._cell_pos(Vector2i(x, y)))
+	var ok := 0
+	var through := 0
+	var n := 6
+	var cur: Vector3 = lv.start_pos
+	for i in n:
+		var target: Vector3 = free_cells[rnd.randi() % free_cells.size()]
+		for k in 30:
+			if cur.distance_to(target) > 25.0:
+				break
+			target = free_cells[rnd.randi() % free_cells.size()]
+		p.global_position = cur + Vector3(0, 0.1, 0)
+		p.velocity = Vector3.ZERO
+		await sim(0.2)
+		var path: PackedVector3Array = lv.find_path(cur, target)
+		var arrived := true
+		for wp in path:
+			var t0: float = game.time
+			var last: Vector3 = p.global_position
+			var last_t: float = game.time
+			while Vector2(wp.x - p.global_position.x, wp.z - p.global_position.z).length() > 0.7:
+				var d: Vector3 = wp - p.global_position
+				d.y = 0.0
+				d = d.normalized()
+				p.yaw = atan2(-d.x, -d.z)
+				p.in_move = Vector2(0, 1)
+				await physics_frame
+				if absf(p.global_position.y - lv.ground_y(p.global_position)) > 6.0:
+					through += 1
+					arrived = false
+					break
+				if game.time - last_t > 1.5:
+					if p.global_position.distance_to(last) < 0.5:
+						arrived = false
+						break
+					last = p.global_position
+					last_t = game.time
+				if game.time - t0 > 25.0:
+					arrived = false
+					break
+			if not arrived:
+				break
+		if arrived:
+			ok += 1
+		else:
+			print("jugador atorado en ruta %d: de %s a %s, pos %s" % [i, cur, target, p.global_position])
+		cur = target
+	p.in_move = Vector2.ZERO
+	check(through == 0, "el jugador nunca atraviesa el suelo")
+	check(ok >= n - 1, "el jugador recorre rutas de la grilla sin atorarse (%d de %d)" % [ok, n])
+	game.state = "menu"
+	game.manual = false
+	p.global_position = lv.start_pos + Vector3(0, 0.1, 0)
+
+# IA en la arena: con el jugador quieto, los enemigos llegan a verlo (ruta + linea de vision) y no se atoran
+func _arena_ai_check() -> void:
+	var lv = game.level
+	var p = game.player
+	game.bot = false
+	game.manual = true
+	game.god = true
+	p.in_move = Vector2.ZERO
+	p.in_fire = false
+	p.in_aim = false
+	kill_all()
+	await sim(1.5)
+	for e in game.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	game.enemies.clear()
+	game.wave_state = "idle"
+	game.queue.clear()
+	game.wave = 6
+	var squad: Array = []
+	for t in ["rifleman", "runner", "heavy", "grenadier"]:
+		for i in 4:
+			squad.append(game.spawn_enemy(t, lv.spawn_pos(p.global_position, 20.0)))
+	var stuck_start := 0
+	await sim(40.0)
+	var seen := 0
+	var stuck := 0
+	var inside := 0
+	var on_floor := 0
+	var closest := 0
+	for e in squad:
+		if not is_instance_valid(e):
+			continue
+		if e.ever_los:
+			seen += 1
+		stuck += e.stuck_events
+		if absf(e.global_position.x) <= lv.half and absf(e.global_position.z) <= lv.half:
+			inside += 1
+		if e.is_on_floor():
+			on_floor += 1
+		if e.global_position.distance_to(p.global_position) < 40.0:
+			closest += 1
+	var frac := float(seen) / float(squad.size())
+	print("IA arena: LOS %d/%d, atoranques %d (%.1f por enemigo), en el suelo %d, dentro %d" % [seen, squad.size(), stuck, float(stuck) / squad.size(), on_floor, inside])
+	check(frac >= 0.75, "los enemigos llegan a tener linea de vision al jugador (%d de %d)" % [seen, squad.size()])
+	check(float(stuck) / squad.size() <= 4.0, "pocos atoranques (%.1f por enemigo en 40 s)" % [float(stuck) / squad.size()])
+	check(inside == squad.size(), "todos los enemigos siguen dentro del area jugable (%d de %d)" % [inside, squad.size()])
+	check(on_floor >= squad.size() - 1, "los enemigos caminan sobre el terreno (%d de %d en el suelo)" % [on_floor, squad.size()])
+	for e in squad:
+		if is_instance_valid(e) and not e.dying:
+			e.take_hit(1e6, e.global_position + Vector3(0, 1, 0), false, Vector3.FORWARD)
+	await sim(2.0)
+	game.manual = false
+	game.god = false
+
 func _run() -> void:
 	game.save_path = TEST_SAVE
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_SAVE))
@@ -72,8 +348,15 @@ func _run() -> void:
 		check(q.size() > 0, "oleada %d tiene enemigos" % n)
 		check((q[0] == "boss") == (n % 5 == 0), "jefe solo cada 5 oleadas (oleada %d)" % n)
 	# --- pathing de la grilla
-	var path: PackedVector3Array = game.level.find_path(Vector3(-25, 0, -25), Vector3(25, 0, 25))
-	check(path.size() >= 1 and path[path.size() - 1].distance_to(Vector3(25, 0, 25)) < 3.0, "A* encuentra camino de esquina a esquina")
+	var lv = game.level
+	var pa: Vector3 = lv.spawn_points[0]
+	var pb: Vector3 = lv.spawn_points[lv.spawn_points.size() / 2]
+	var path: PackedVector3Array = lv.find_path(pa, pb)
+	check(path.size() >= 1 and path[path.size() - 1].distance_to(pb) < 3.0, "A* encuentra camino entre puntos de aparicion lejanos")
+	if lv.meshy:
+		await _arena_checks()
+	else:
+		check(not lv.meshy and lv.half == 30.0, "fallback: patio Kenney activo")
 
 	# --- iniciar con click, partida automatica
 	click()
@@ -213,6 +496,10 @@ func _run() -> void:
 	check(game.score == 0 and game.kills == 0 and game.shots == 0 and game.wave == 0, "reinicio limpia estadisticas")
 	check(p.hp == p.max_hp and p.gren == 3 and p.ammo == 30 and p.weapon == "rifle", "reinicio restablece al jugador")
 	check(is_equal_approx(Engine.time_scale, game.time_base), "time_scale base tras reiniciar")
+
+	if game.level.meshy:
+		await _arena_ai_check()
+		game.start_game()
 
 	# --- oleadas 1..15 acortadas: avanzar con el bot, matando a los enemigos
 	game.bot = true

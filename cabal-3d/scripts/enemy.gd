@@ -59,6 +59,10 @@ var cycles := 0
 var want_vel := Vector3.ZERO
 var face_dir := Vector3.ZERO     # direccion a la que debe mirar (cero = hacia donde camina)
 var los := false
+var ever_los := false       # estadisticas para las pruebas: alguna vez tuvo linea de vision al jugador
+var stuck_events := 0       # cuantas veces se detecto atoranque
+var stuck_streak := 0       # atoranques seguidos sin avanzar (si pasan de 4, se reubica)
+var rescues := 0
 var los_t := 0.0
 var no_los_t := 0.0
 var stuck_t := 0.0
@@ -79,7 +83,9 @@ var last_target := Vector3.ZERO
 func _ready() -> void:
 	add_to_group("enemy")
 	collision_layer = 4
-	collision_mask = 1
+	collision_mask = 1 | 8        # mundo + limites invisibles
+	floor_snap_length = 0.55
+	floor_max_angle = deg_to_rad(50.0)
 
 func init_type(t: String, wave: int, pos: Vector3) -> void:
 	type = t
@@ -90,8 +96,8 @@ func init_type(t: String, wave: int, pos: Vector3) -> void:
 	max_hp = cfg.hp * (1.0 + 0.07 * (wave - 1)) * (1.0 + (0.25 * (wave / 5.0) if t == "boss" else 0.0))
 	hp = max_hp
 	speed = cfg.speed * (1.0 + 0.2 * diff)
-	global_position = pos
-	last_pos = pos
+	global_position = pos + Vector3(0, 0.08, 0)
+	last_pos = global_position
 	var h := 1.84 * scale_f
 	capsule = CapsuleShape3D.new()
 	capsule.radius = (0.42 * scale_f) if t != "boss" else 0.66
@@ -279,6 +285,8 @@ func _physics_process(delta: float) -> void:
 	if los_t <= 0.0:
 		los_t = 0.12 + randf() * 0.05
 		los = _can_see()
+		if los:
+			ever_los = true
 		no_los_t = 0.0 if los else no_los_t + 0.14
 	want_vel = Vector3.ZERO
 	face_dir = Vector3.ZERO
@@ -308,13 +316,31 @@ func _physics_process(delta: float) -> void:
 	if stuck_t > 0.8:
 		stuck_t = 0.0
 		if want_vel.length() > 0.5 and last_pos.distance_to(global_position) < 0.15:
+			stuck_events += 1
+			stuck_streak += 1
+			if stuck_streak >= 4:
+				_rescue()
 			repath_t = 0.0
 			path = PackedVector3Array()
 			var side := Vector3(-want_vel.z, 0, want_vel.x).normalized() * randf_range(-3.0, 3.0)
 			goal = global_position + side
 			path = level.find_path(global_position, level.nearest_free(goal))
 			path_i = 0
+		if last_pos.distance_to(global_position) > 1.0:
+			stuck_streak = 0
 		last_pos = global_position
+
+# Red de seguridad: un enemigo que sigue atascado tras varios intentos reaparece en un punto libre (nunca bloquea la oleada)
+func _rescue() -> void:
+	stuck_streak = 0
+	rescues += 1
+	var p: Vector3 = level.spawn_pos(player.global_position, 16.0, 2.0 if type != "boss" else 2.4)
+	global_position = p + Vector3(0, 0.08, 0)
+	velocity = Vector3.ZERO
+	path = PackedVector3Array()
+	path_i = 0
+	last_pos = global_position
+	_set_state("move")
 
 func _apply_motion(delta: float) -> void:
 	# separacion entre enemigos
@@ -725,7 +751,7 @@ func die(head := false) -> void:
 	if cover != null:
 		cover.taken = null
 	collision_layer = 0
-	collision_mask = 1
+	collision_mask = 1 | 8
 	model.play_once("die", 0.04)
 	model.base_emit = Color.BLACK
 	model.scale = Vector3.ONE * scale_f
