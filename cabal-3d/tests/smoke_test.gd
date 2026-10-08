@@ -7,6 +7,7 @@ extends SceneTree
 # Imprime "RESULT ..." y sale con codigo 1 si algun chequeo falla. Con la arena Meshy ademas comprueba la navegacion
 # horneada: puntos de aparicion, suelo, rutas, linea de vision de los enemigos y limites.
 
+const Assets = preload("res://scripts/assets.gd")
 const TEST_SAVE := "user://smoke_test3d.cfg"
 
 var game
@@ -333,6 +334,117 @@ func _arena_ai_check() -> void:
 	game.manual = false
 	game.god = false
 
+func _angle_vs_rest(m, bone: String) -> float:
+	var i: int = m.bi[bone]
+	return m.skel.get_bone_pose_rotation(i).angle_to(m.skel.get_bone_rest(i).basis.get_rotation_quaternion())
+
+# pose sana de un personaje Meshy: sin T-pose, raiz sin desplazar, pies ni hundidos ni flotando
+func _pose_ok(m, label: String) -> void:
+	var a: float = maxf(_angle_vs_rest(m, "l_arm"), _angle_vs_rest(m, "r_arm"))
+	check(a > 0.3, "%s: sin T-pose (brazo gira %.2f rad respecto del reposo)" % [label, a])
+	var hp: Vector3 = m.skel.get_bone_pose_position(m.bi.hips)
+	var hr: Vector3 = m.skel.get_bone_rest(m.bi.hips).origin
+	check(Vector2(hp.x - hr.x, hp.z - hr.z).length() < 0.25, "%s: raiz de la cadera sin desplazar (%.2f, %.2f)" % [label, hp.x - hr.x, hp.z - hr.z])
+	check(m.body.position.length() < 0.001, "%s: el cuerpo no se desplaza respecto del nodo" % label)
+	m._fk()
+	var fy: float = minf((m.gp[m.bi.l_foot] as Transform3D).origin.y, (m.gp[m.bi.r_foot] as Transform3D).origin.y) * m.unit
+	check(fy > 0.02 and fy < 0.5, "%s: pies sobre el suelo (tobillo a %.2f m)" % [label, fy])
+
+func _character_checks(spawned: Dictionary) -> void:
+	var p = game.player
+	var m = p.model
+	check(m.skel != null and m.skel.get_bone_count() == 28, "jugador: esqueleto de 28 huesos cargado")
+	for n in ["idle", "walk", "run", "shot"]:
+		check(m.anim.has_animation(n), "jugador: animacion '%s' presente" % n)
+	check(absf(m.unit * 1.75 - 1.8) < 0.1, "jugador: escala a ~1.8 m (unit=%.3f)" % m.unit)
+	check(m.r_attach is BoneAttachment3D and m.r_attach.bone_name == "mixamorig_RightHand" and m.weapon_holder.get_parent() == m.r_attach, "arma sujeta a la mano derecha (BoneAttachment3D)")
+	check(m.muzzle != null and m.muzzle.is_inside_tree() and m.muzzle.get_parent() == m.weapon_holder, "muzzle valido en el canon del arma")
+	await sim(0.5)
+	var hand: Vector3 = m.r_attach.global_position
+	var mz: Vector3 = m.muzzle.global_position
+	check(mz.distance_to(hand) > 0.15 and mz.distance_to(hand) < 1.2, "muzzle a distancia razonable de la mano (%.2f m)" % mz.distance_to(hand))
+	check(mz.y > p.global_position.y + 0.5 and mz.y < p.global_position.y + 2.2, "muzzle a la altura del pecho (%.2f m sobre los pies)" % (mz.y - p.global_position.y))
+	_pose_ok(m, "jugador")
+	# agachado
+	m.crouch = 1.0
+	await sim(0.2)
+	_pose_ok(m, "jugador agachado")
+	m.crouch = 0.0
+	await sim(0.1)
+	# zombis: animaciones, tintes distintos, pose sana
+	var tints := {}
+	for t in spawned:
+		var e = spawned[t]
+		tints[str(e.cfg.tint)] = true
+		check(e.model.kind == "zombie" and e.model.skel.get_bone_count() == 28, "enemigo %s: es el zombi Meshy con esqueleto" % t)
+	check(tints.size() == spawned.size(), "un tinte distinto por tipo de enemigo (%d)" % tints.size())
+	var z = spawned["rifleman"]
+	for n in ["idle", "walk", "run", "attack"]:
+		check(z.model.anim.has_animation(n), "zombi: animacion '%s' presente" % n)
+	check(z.model.muzzle != null and z.model.muzzle.is_inside_tree(), "zombi: boca/muzzle valida para el proyectil")
+	if not Assets.headless:
+		var cols := {}
+		for t in spawned:
+			cols[str(spawned[t].model.mats[0].albedo_color)] = true
+		check(cols.size() == spawned.size(), "materiales tintados distintos por tipo")
+	await sim(2.0)
+	for t in spawned:
+		var e = spawned[t]
+		if is_instance_valid(e) and not e.dying:
+			_pose_ok(e.model, "zombi " + t)
+	# ataque melee del corredor con dano
+	kill_all()
+	await sim(1.5)
+	var was_bot: bool = game.bot
+	game.bot = false
+	game.manual = true
+	p.in_move = Vector2.ZERO
+	p.in_fire = false
+	game.god = false
+	p.hp = 100.0
+	p.inv_t = 0.0
+	var fwd: Vector3 = p.forward_flat()
+	var rn = game.spawn_enemy("runner", game.level.nearest_free(p.global_position + fwd * 5.0))
+	await sim(4.0)
+	check(p.hp < 100.0, "el corredor ataca cuerpo a cuerpo y hace dano (hp=%.0f)" % p.hp)
+	# proyectil toxico: un fusilero con linea de vision daña al jugador
+	kill_all()
+	await sim(1.5)
+	p.hp = 100.0
+	p.inv_t = 0.0
+	var dealt := false
+	for k in 8:
+		var ang := TAU * k / 8.0
+		var pos: Vector3 = game.level.nearest_free(p.global_position + Vector3(sin(ang), 0, cos(ang)) * 7.0)
+		var rf = game.spawn_enemy("rifleman", pos)
+		rf.set_physics_process(false)
+		var origin: Vector3 = rf.model.muzzle.global_position
+		var h0: float = p.hp
+		rf._shoot_dir(origin, (p.chest_pos() - origin).normalized(), 7.0, 0.0, rf.TOXIC)
+		rf.queue_free()
+		game.enemies.erase(rf)
+		if p.hp < h0:
+			dealt = true
+			break
+	check(dealt, "el proyectil toxico del zombi daña al jugador")
+	# muerte procedural del zombi y del jugador sin errores
+	var zz = game.spawn_enemy("heavy", game.level.spawn_pos(p.global_position, 14.0))
+	await sim(0.3)
+	zz.take_hit(1e6, zz.global_position + Vector3(0, 1, 0), false, Vector3.FORWARD)
+	await sim(1.5)
+	check(zz.dying and zz.model.dying and absf(zz.model.body.basis.orthonormalized().get_euler().x) > 0.8, "muerte procedural del zombi: cae alrededor de los pies")
+	m.die(1.0)
+	await sim(1.4)
+	check(m.dying and absf(m.body.basis.orthonormalized().get_euler().x) > 0.8, "muerte procedural del jugador: cae hacia atras/costado")
+	m.revive()
+	await sim(0.2)
+	check(not m.dying and m.body.basis.orthonormalized().get_euler().length() < 0.01 and m.armed, "revive(): vuelve de pie con el arma")
+	_pose_ok(m, "jugador revivido")
+	p.hp = 100.0
+	game.god = true
+	game.bot = was_bot
+	game.manual = false
+
 func _run() -> void:
 	game.save_path = TEST_SAVE
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_SAVE))
@@ -384,7 +496,8 @@ func _run() -> void:
 		var e = game.spawn_enemy(types[i], game.level.spawn_pos(p.global_position, 14.0))
 		spawned[types[i]] = e
 		check(e.hp > 0.0 and e.model != null, "enemigo %s creado" % types[i])
-	check(spawned["boss"].scale_f > 2.0 and spawned["heavy"].scale_f > 1.3, "escalas de jefe y pesado")
+	check(spawned["boss"].scale_f > 2.0 and spawned["heavy"].scale_f > 1.2 and spawned["heavy"].scale_f < 1.3, "escalas de jefe (~2.1) y pesado (~1.25)")
+	await _character_checks(spawned)
 	await sim(25.0)
 	var alive_types := {}
 	for e in game.enemies:
@@ -563,6 +676,6 @@ func _run() -> void:
 	await process_frame
 	preload("res://scripts/assets.gd")._scenes.clear()
 	preload("res://scripts/assets.gd")._lit.clear()
-	preload("res://scripts/model.gd")._anim_cache.clear()
+	preload("res://scripts/assets.gd")._res.clear()
 	print(summary)
 	quit(1 if fails > 0 else 0)

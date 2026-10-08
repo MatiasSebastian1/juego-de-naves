@@ -16,7 +16,7 @@ const SV := "res://assets/third_party/kenney/survival/"
 # "play_half" (semilado jugable, en metros ya escalados) y "start_hint"; ver README.md de cabal-3d.
 const ARENA := {
 	"path": "res://assets/meshy/oasis_village.glb",
-	"scale": 52.0,            # 1.9 u * 52 = ~99 m de lado; la puerta de una casa queda de ~2 m (el Blocky mide 1.84 m)
+	"scale": 52.0,            # 1.9 u * 52 = ~99 m de lado; la puerta de una casa queda de ~2 m (el personaje mide 1.8 m)
 	"yaw": 0.0,               # giro del mesh en grados
 	"play_half": 41.0,        # el area jugable es el cuadrado [-41, 41] (el borde del diorama queda fuera)
 	"start_hint": Vector2(8.0, 22.0),   # el jugador empieza en la celda abierta alcanzable mas cercana a este punto

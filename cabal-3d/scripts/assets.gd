@@ -5,15 +5,20 @@ extends RefCounted
 
 const KEN := "res://assets/third_party/kenney/"
 
-# PUNTO DE EXTENSION: personaje principal generado con Meshy AI (aun no entregado, no se usa).
-# Si existe `assets/meshy/character.glb`, `meshy_character_available()` devuelve true; el reemplazo del Blocky del jugador
-# se haria en model.gd (Model.setup) cargando este GLB con la escala/rotacion de abajo. Ver "Personaje Meshy" en el README.
-const MESHY_CHARACTER := "res://assets/meshy/character.glb"
-const MESHY_CHARACTER_SCALE := 1.0          # ajustar para que mida ~1.8 m
-const MESHY_CHARACTER_YAW_DEG := 180.0      # giro para que el frente mire a +Z local (como los Blocky; ajustar segun el modelo)
+# Personajes de Meshy AI (jugador y zombi): ver scripts/model.gd y assets/meshy/README.md.
+const MESHY_PLAYER := "res://assets/meshy/character.glb"
+const MESHY_ZOMBIE := "res://assets/meshy/zombie.glb"
 
 static func meshy_character_available() -> bool:
-	return ResourceLoader.exists(MESHY_CHARACTER)
+	return ResourceLoader.exists(MESHY_PLAYER) and ResourceLoader.exists(MESHY_ZOMBIE)
+
+static var _res := {}
+
+# recurso cargado una sola vez (bibliotecas de animacion compartidas)
+static func res(path: String) -> Resource:
+	if not _res.has(path):
+		_res[path] = load(path)
+	return _res[path]
 
 static var headless := DisplayServer.get_name() == "headless"   # sin renderer: las mallas no exponen superficies
 static var _scenes := {}

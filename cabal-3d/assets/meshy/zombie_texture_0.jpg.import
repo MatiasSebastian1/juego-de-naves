@@ -2,26 +2,29 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bx5lmgmp53n2u"
-path="res://.godot/imported/texture-g.png-398d41f1fc03ab762bd4ede53b42a52e.ctex"
+uid="uid://dhjsyl52yk7c4"
+path="res://.godot/imported/zombie_texture_0.jpg-7586f9ac4316566068ea6f3a3a9ae5c2.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "5cf8e262be5a1859b015c1c75a2080ac"
 }
 
 [deps]
 
-source_file="res://assets/third_party/kenney/characters/Textures/texture-g.png"
-dest_files=["res://.godot/imported/texture-g.png-398d41f1fc03ab762bd4ede53b42a52e.ctex"]
+source_file="res://assets/meshy/zombie_texture_0.jpg"
+dest_files=["res://.godot/imported/zombie_texture_0.jpg-7586f9ac4316566068ea6f3a3a9ae5c2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -31,4 +34,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

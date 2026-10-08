@@ -4,14 +4,13 @@ Todo lo de esta carpeta es de [Kenney](https://kenney.nl) y esta publicado bajo 
 **CC0 1.0 (dominio publico)**: se puede usar libremente, incluso en proyectos comerciales, sin atribucion
 obligatoria (igual se agradece: gracias, Kenney!). Cada pack trae su `LICENSE_*.txt` original.
 
-El estilo visual del juego es **low-poly estilizado** (personajes de cubos, props simples con una sola textura de
-color): no busca realismo. Los modelos se convirtieron a materiales con luz en tiempo de ejecucion (los GLB
+Los personajes ya no son de Kenney: el soldado y el zombi son de Meshy (`assets/meshy/`). Estos props son **low-poly estilizados**
+(una sola textura de color). Los modelos se convirtieron a materiales con luz en tiempo de ejecucion (los GLB
 originales vienen "unlit").
 
 | Carpeta | Pack | Uso |
 |---|---|---|
-| `characters/` | Blocky Characters | jugador y enemigos (`character-m/k/d/g/o/h.glb` + `Textures/`) |
-| `blasters/` | Blaster Kit | armas del jugador y enemigos, granada, items de drop |
+| `blasters/` | Blaster Kit | armas del jugador (blaster-a/d/e), granada del jugador, items de drop |
 | `survival/` | Survival Kit | cajas, barriles, paneles metalicos, vallas, rocas y fogatas (cobertura baja de la arena) |
 | `particles/` | Particle Pack | fogonazos, llamas, humo, chispas, resplandores, marcas de quemadura |
 | `fonts/` | Kenney Fonts | Kenney Future (interfaz) |
@@ -19,7 +18,7 @@ originales vienen "unlit").
 Los efectos de sonido (`assets/audio/*.wav`) son los mismos de `cabal-godot/` (sintetizados y mezclados con
 Impact Sounds / Sci-fi Sounds de Kenney, tambien CC0).
 
-Se retiraron del proyecto los modelos que ya no se usan (City Kit completo y parte del Survival Kit) para achicar
+Se retiraron del proyecto los modelos que ya no se usan (City Kit completo, parte del Survival Kit, los Blocky Characters y los blasters de los enemigos) para achicar
 el ejecutable: la arena actual es la aldea de Meshy (`assets/meshy/`).
 
 Nota tecnica: los `.glb.import` de estos modelos tienen `meshes/force_disable_compression=true`. Con la

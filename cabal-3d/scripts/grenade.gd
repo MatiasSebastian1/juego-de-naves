@@ -31,9 +31,28 @@ func launch(start: Vector3, tgt: Vector3, player_owned: bool, ring_node = null) 
 	fuse = t + (0.35 if by_player else 0.55)
 	dmg = 120.0 if by_player else 42.0
 	radius = 5.4 if by_player else 4.2
-	model = Assets.inst("res://assets/third_party/kenney/blasters/grenade-a.glb")
-	Assets.make_lit(model, Color(1, 1, 1))
-	model.scale = Vector3.ONE * 2.4
+	if by_player:
+		model = Assets.inst("res://assets/third_party/kenney/blasters/grenade-a.glb")
+		Assets.make_lit(model, Color(1, 1, 1))
+		model.scale = Vector3.ONE * 2.4
+	else:
+		# los zombis lanzan una bolsa toxica verde (vomito de acido)
+		model = Node3D.new()
+		if not Assets.headless:
+			var bag := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.2
+			sm.height = 0.36
+			bag.mesh = sm
+			var bm := StandardMaterial3D.new()
+			bm.albedo_color = Color(0.35, 0.8, 0.12)
+			bm.emission_enabled = true
+			bm.emission = Color(0.25, 0.9, 0.1)
+			bm.emission_energy_multiplier = 1.4
+			bm.roughness = 0.35
+			bag.material_override = bm
+			bag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			model.add_child(bag)
 	add_child(model)
 	if Assets.headless:
 		return
@@ -44,7 +63,7 @@ func launch(start: Vector3, tgt: Vector3, player_owned: bool, ring_node = null) 
 	blink.mesh = sm
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(1.0, 0.15, 0.1)
+	mat.albedo_color = Color(1.0, 0.15, 0.1) if by_player else Color(0.7, 1.0, 0.2)
 	blink.material_override = mat
 	blink.position = Vector3(0, 0.35, 0)
 	blink.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

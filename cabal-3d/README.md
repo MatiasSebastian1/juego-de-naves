@@ -7,8 +7,9 @@ tirá granadas y derribá a los jefes (cada 5 oleadas).
 
 Es un proyecto independiente: no depende de `cabal-godot/` (el juego 2D) ni de nada fuera de esta carpeta.
 
-> Estilo visual: personajes y props **low-poly estilizados** (Kenney) sobre una arena de Meshy con material PBR
-> (textura + normal + rugosidad). Si falta el GLB de Meshy el juego cae al patio industrial de Kenney (ver abajo).
+> Estilo visual: el **soldado** (jugador) y el **zombi** (todos los enemigos) son personajes generados con **Meshy AI**
+> (con esqueleto y animaciones de Meshy) sobre una arena de Meshy con material PBR (textura + normal + rugosidad); las armas,
+> cajas y barriles son low-poly de Kenney. Si falta el GLB de la arena el juego cae al patio de Kenney (ver abajo).
 
 ## Como abrirlo
 
@@ -42,12 +43,14 @@ En la pausa: **R** reinicia y **Q** vuelve al menu. Si la ventana pierde el foco
 
 * **Cobertura**: los muros de las casas, las rocas del terreno y las cajas, barriles y paneles repartidos por los
   espacios abiertos tienen colisiones y **bloquean los disparos de ambos bandos**. Agachate (C) detras de una cobertura baja y quedas tapado ("EN COBERTURA": -30% de dano).
-* **Enemigos** (todos son personajes Blocky distintos, con anillo de color bajo los pies y barra de vida):
-  * **Fusilero** (rojo): busca cobertura, asoma, **telegrafa** (brilla en rojo + "!") y dispara rafagas con punteria limitada.
-  * **Corredor** (amarillo): sprint hacia vos y ataque cuerpo a cuerpo (se esquiva rodando).
-  * **Pesado** (naranja, x1.35): muchisima vida, rafagas largas mientras avanza.
-  * **Granadero** (verde): lanza granadas con un **indicador en el suelo**; la HUD avisa la direccion.
-  * **Jefe** (violeta, x2.2, cada 5 oleadas): abanico de disparos (la cobertura lo frena), granadas y rafagas; se enfurece por debajo del 50%.
+* **Enemigos**: todos son el **mismo zombi** (Meshy), distinguidos por tinte, tamano y un anillo de color bajo los pies
+  (y barra de vida). Los que atacan de lejos **lanzan proyectiles toxicos** (escupitajo / bola de acido verde, bolsas
+  toxicas en lugar de granadas) con el gesto de la animacion "attack"; no hay sangre (salpicaduras verdes):
+  * **Fusilero** (rojo): busca cobertura, asoma, **telegrafa** (brilla en rojo + "!") y escupe rafagas con punteria limitada.
+  * **Corredor** (amarillo): corre hacia vos y te golpea cuerpo a cuerpo (el golpe cae cuando la animacion llega al impacto; se esquiva rodando).
+  * **Pesado** (naranja, x1.25): muchisima vida, rafagas largas mientras avanza.
+  * **Granadero** (verde): lanza bolsas de acido con un **indicador en el suelo**; la HUD avisa la direccion.
+  * **Jefe** (violeta, x2.1, cada 5 oleadas): abanico de escupitajos (la cobertura lo frena), bolsas toxicas y rafagas; se enfurece por debajo del 50%.
 * **Drops** (se recogen caminando encima): vida, municion, granadas y armas temporales (**escopeta** y **rafaga**).
 * **Cabezazo** = dano x2 con aviso "HEADSHOT". Hitmarker blanco (impacto), amarillo (baja), rojo (cabeza).
 * **Puntaje y combo**: bajas encadenadas (3.8 s) suben el multiplicador (hasta x5). Al terminar ves bajas,
@@ -60,13 +63,16 @@ En la pausa: **R** reinicia y **Q** vuelve al menu. Si la ventana pierde el foco
 cabal-3d/
   project.godot            Compatibility, 1280x720, MSAA 3D x2, sombras direccionales 4096; capas de fisica: 1 mundo, 2 jugador, 3 enemigos, 4 limite
   scenes/main.tscn         nodo raiz con game.gd (todo lo demas se arma por codigo)
-  tools/slim_glb.py        achica los GLB de Meshy (reescribe solo las texturas embebidas); no se exporta
+  tools/slim_glb.py        achica un GLB de Meshy estatico (arena): reescribe solo las texturas embebidas; no se exporta
+  tools/build_character.py arma el modelo de un personaje (malla + esqueleto + texturas reducidas, sin animaciones)
+  tools/build_anims.gd     extrae las animaciones de los GLB de Meshy a un AnimationLibrary .res (sin malla ni texturas)
+  tools/LEEME.txt          copia del LEEME que va en el ZIP de datos del export
   scripts/
     game.gd                estados (menu/juego/pausa/game over), oleadas, puntaje, drops, ranking, entrada
     player.gd              movimiento, camara SpringArm3D sobre el hombro, disparo hitscan, recarga, rodar, granadas
-    enemy.gd               IA de los 5 tipos (cobertura, telegrafo, melee, granadas, jefe), muerte con fade
+    enemy.gd               IA de los 5 tipos de zombi (cobertura, telegrafo, melee, proyectiles toxicos, jefe), muerte con fade
     level.gd               arena Meshy (escala, colision trimesh, horneado de navegacion, cobertura, horizonte) o patio Kenney de respaldo; cielo/niebla/luces
-    model.gd               personaje Blocky: animaciones mezcladas (piernas + brazos con arma), arma, destello
+    model.gd               personajes Meshy con Skeleton3D: animaciones, IK de brazos y arma en la mano, agacharse/rodar/morir procedurales, destello
     fx.gd                  pools de efectos: trazadoras, chispas, polvo, fogonazos, explosiones, humo, fuego
     grenade.gd, pickup.gd  granada parabolica con rebotes / items de drop
     hud.gd                 interfaz 2D (barra de vida, municion, mira dinamica, hitmarker, indicadores, pantallas)
@@ -76,8 +82,8 @@ cabal-3d/
   tests/                   smoke_test.gd, shot_test.gd, fire_test.gd
   assets/
     audio/                 WAV (de cabal-godot/); los largos se importan en ADPCM para achicar el export
-    meshy/                 oasis_village.glb (arena generada con Meshy AI, ver README.md de esa carpeta)
-    third_party/kenney/    personajes, armas, props de cobertura, particulas y fuente (CC0, ver README.md de esa carpeta)
+    meshy/                 oasis_village.glb (arena), character.glb + player_anims.res (soldado), zombie.glb + zombie_anims.res (ver README.md de esa carpeta)
+    third_party/kenney/    armas, props de cobertura, particulas y fuente (CC0, ver README.md de esa carpeta)
 ```
 
 ### Notas tecnicas
@@ -87,9 +93,23 @@ cabal-3d/
   relleno frio sin sombras, cielo procedural de atardecer, niebla de profundidad calida, tonemap filmico. Fuegos con `CPUParticles3D` + `OmniLight3D`
   parpadeante; polvo ambiente, chispas y humo con pools reutilizados. Postproceso: un `ColorRect` con shader
   (vineta, grano fino, aberracion solo en bordes, color y flash rojo de dano) debajo de la HUD.
-* **Personajes**: los Blocky de Kenney **no tienen `Skeleton3D`** (cada parte es un nodo rigido animado por pistas).
-  Por eso el arma no usa `BoneAttachment3D`: se cuelga del nodo `torso` y el modelo mezcla en codigo las piernas de
-  `idle/walk/sprint` con los brazos de `holding-both`. El torso/cabeza "apuntan" girando el modelo hacia la direccion de la camara.
+* **Personajes**: `Model` (scripts/model.gd) instancia `assets/meshy/character.glb` (soldado) o `zombie.glb` (zombi): una malla de
+  ~10.3k triangulos con 1 material PBR y el esqueleto estilo Mixamo de 28 huesos (en Godot los nombres llevan `_` en lugar de
+  `:`, p. ej. `mixamorig_RightHand`). Las animaciones viven aparte (`player_anims.res`: idle, walk, run, shot; `zombie_anims.res`:
+  idle, walk, run, attack) y el `AnimationPlayer` se avanza a mano para poder poner poses procedurales encima en el mismo
+  cuadro. El movimiento lo gobierna siempre el `CharacterBody3D`: el "root motion" se anulo al extraer las animaciones.
+  Locomocion: idle / walk / run segun la velocidad real, con la velocidad de la animacion proporcional a la velocidad
+  (`Model.locomote`). **Jugador**: el torso y la cabeza giran hacia la mira (rotaciones de los huesos Spine/Spine1/Spine2/Neck/Head)
+  y los brazos usan **IK analitico de dos huesos** (`_ik2`) hacia el arma: la mano derecha en la empunadura y la izquierda en el
+  guardamano; el arma cuelga de un `BoneAttachment3D` en `mixamorig_RightHand` y el `muzzle` (de donde salen trazadoras y
+  fogonazo) es un `Marker3D` en la punta del canon. Agacharse/cubrirse (cadera baja + IK de piernas para no deslizar los pies),
+  voltereta (cuerpo encogido que gira alrededor de su centro) y muerte (rodillas que ceden y caida alrededor de los pies) son
+  **procedurales** porque Meshy no entrego esas animaciones; el `shot` ("Side_Shot") es en realidad una agachada con la mano
+  en el rifle colgado, no una pose de tiro, y no se usa. **Zombis**: gesto de lanzar = tramo 0.35-1.40 s de `attack` (brazos
+  arriba y golpe), sincronizado para que el impacto/lanzamiento coincida con el final del telegrafo; el muzzle es la cara
+  (`headfront`); velocidad y fase de animacion aleatorias por individuo; los lejanos actualizan su animacion cada 2-3 cuadros (`Model.lod`).
+  Nota: el modelo del soldado trae un fusil colgado al pecho **dentro de la malla** (no se puede quitar sin editarla).
+  Los GLB de Kenney que quedan (armas, props) llevan `force_disable_compression=true` (ver mas abajo).
 * **IA / movimiento**: en lugar de `NavigationAgent3D` (el horneado en runtime no es fiable sin cabeza) se usa una
   grilla `AStarGrid2D` de 1 m, con suavizado de caminos por linea de vision, separacion entre enemigos y deteccion de
   atoranques (si un enemigo sigue atascado tras 4 intentos reaparece en un punto libre). Los puntos de cobertura se
@@ -119,7 +139,7 @@ La arena es `assets/meshy/oasis_village.glb`. Se carga en `scripts/level.gd`, co
 | Clave | Valor actual | Para que sirve |
 |---|---|---|
 | `path` | `res://assets/meshy/oasis_village.glb` | GLB de la arena (un mesh estatico; si no existe se usa el patio Kenney de respaldo) |
-| `scale` | `52.0` | factor de escala. El diorama de Meshy mide ~1.9 u de lado -> ~99 m. Con 52 las puertas miden ~2 m frente a los 1.84 m del Blocky; con 30 (57 m) las casas quedaban a la altura de un personaje |
+| `scale` | `52.0` | factor de escala. El diorama de Meshy mide ~1.9 u de lado -> ~99 m. Con 52 las puertas miden ~2 m frente a los 1.8 m del personaje; con 30 (57 m) las casas quedaban a la altura de un personaje |
 | `yaw` | `0.0` | giro del mesh en grados |
 | `play_half` | `41.0` | semilado del cuadrado jugable (metros, ya escalados); el resto es borde/horizonte |
 | `start_hint` | `(8, 22)` | el inicio se elige entre las celdas abiertas a 14-34 m de `look_at` con mejor vista; este punto solo desempata |
@@ -133,7 +153,7 @@ Pasos para usar **otra arena** (por ejemplo otro GLB de Meshy):
 1. Si pesa mucho, `python3 tools/slim_glb.py original.glb assets/meshy/mi_arena.glb` (texturas a 2048/1024).
 2. Copialo a `assets/meshy/` y abri el proyecto (o `godot --headless --import --path cabal-3d`) para que se importe. Copia
    los `.import` de `oasis_village*` (lossy, sin VRAM, sin LODs) si queres el mismo peso en el export.
-3. En `ARENA` cambia `path`, ajusta `scale` (mira capturas con `tests/shot_test.gd`: el Blocky mide 1.84 m) y `play_half`
+3. En `ARENA` cambia `path`, ajusta `scale` (mira capturas con `tests/shot_test.gd`: el personaje mide 1.8 m) y `play_half`
    (que el borde del mesh quede ~5-8 m fuera). Si el terreno es muy irregular o con escalones, `STEP_MAX`, `MIN_NY` y
    `CAP_R` (arriba de `level.gd`) controlan que celdas se consideran transitables.
 4. Corre `tests/smoke_test.gd`: comprueba que hay zona alcanzable, puntos de aparicion libres con ruta al jugador, que los
@@ -143,21 +163,27 @@ El mesh debe ser **estatico** y con las normales consistentes (la colision solo 
 el juego usa el **patio Kenney** de antes (60x60 m con cobertura, sin los edificios del City Kit, que se retiraron del
 proyecto para achicar el export). Probarlo: `SMOKE_ARENA=kenney godot --headless ... smoke_test.gd`.
 
-## Personaje Meshy (punto de extension)
+## Personajes Meshy: como cambiarlos y agregar animaciones
 
-Todavia **no hay personaje de Meshy**: el jugador y los enemigos siguen siendo los Blocky de Kenney. Para cuando llegue:
+Detalle de archivos y de la preparacion en `assets/meshy/README.md`. Resumen:
 
-* **Ruta**: `assets/meshy/character.glb` (`Assets.MESHY_CHARACTER`; `Assets.meshy_character_available()` dice si existe).
-* **Escala**: `Assets.MESHY_CHARACTER_SCALE` (que mida ~1.8 m; el Blocky mide ~2.7 u de modelo x `Model.UNIT`=0.68).
-* **Rotacion**: `Assets.MESHY_CHARACTER_YAW_DEG` (el frente del modelo debe mirar a +Z local, como los Blocky).
-* **Donde enchufarlo**: `Model.setup()` en `scripts/model.gd`: ahi se instancia `character-m.glb` y se arma el rig. Habria que
-  instanciar el GLB de Meshy (con su `Skeleton3D` y `AnimationPlayer`), centrarlo en los pies (el nodo del jugador tiene el
-  origen en los pies; `model.position.y = -0.9` compensa el pivote de la capsula), mapear las animaciones a los nombres que
-  usa el codigo (`idle_h`, `walk_h`, `sprint_h`, `die`, `attack-melee-right`; los Blocky mezclan piernas y brazos por
-  pistas, un personaje con esqueleto puede reproducir una animacion completa) y colgar el arma de un `BoneAttachment3D`
-  de la mano derecha (en `give_weapon`, hoy se cuelga del nodo `torso`). `make_unique_lit` hace los materiales propios
-  para el destello de dano; con materiales PBR de Meshy hay que duplicarlos y animar `emission` igual.
-* No esta implementado: si el archivo no existe no pasa nada.
+1. **Reemplazar el soldado o el zombi**: generar el personaje en Meshy con rigging y animaciones (cualquier GLB sirve para la
+   malla: todos traen la misma), `python3 tools/build_character.py idle.glb assets/meshy/character.glb` (o `zombie.glb`) y abrir
+   Godot para que importe. Copiar los `.import` de `character*` (texturas lossy 0.85, sin VRAM, sin LODs). Si el esqueleto no es
+   el de 28 huesos Mixamo, ajustar `BN` (nombres de huesos) en `model.gd`. La escala sale sola (`HEIGHT` = 1.8 m / altura de la malla).
+2. **Agregar animaciones de Meshy** (por ejemplo `death`, `reload`, `crouch`): descargar el GLB de la animacion y volver a correr
+   `build_anims.gd` con TODAS las animaciones (genera de nuevo el .res):
+   ```
+   godot --headless --path cabal-3d --script res://tools/build_anims.gd -- /carpeta/glb res://assets/meshy/player_anims.res \
+         res://assets/meshy/character.glb idle=idle:Idle_02:loop walk=walk:Walking:loop run=run:Running:loop shot=shot:Side_Shot death=death:Dying
+   ```
+   (cada argumento es `nombre=archivo:AnimacionDelGLB[:loop]`). Luego usarla: `model.play("death")` / `model.play_once(...)`;
+   para reemplazar la muerte procedural, llamar a esa animacion en `Model.die()` en lugar de congelar la pose.
+3. **Zombi**: `zombie_anims.res` se genera igual (`attack=attack:Attack`, etc.); el gesto de lanzar usa `ATTACK_FROM/HIT/END`
+   en `enemy.gd` (instantes de la animacion `attack`).
+4. **Tintes de los zombis**: `tint` de cada tipo en `Enemy.TYPES` (se multiplica con la textura del material); `scale` y `col` (anillo).
+5. Agarre del arma: constantes `GRIP_*`, `SUPPORT_*`, `AIM_OFFSET`, `READY_OFFSET` al principio de `model.gd`
+   (`tests/rig_test.gd` genera contactos del rig para ajustarlas viendo las poses).
 
 ## Pruebas
 
@@ -169,6 +195,11 @@ godot --headless --path cabal-3d --script res://tests/smoke_test.gd
 # g_cover, g_boss, g_boom, g_pause y g_over (.png) en la carpeta indicada
 xvfb-run -a -s "-screen 0 1280x720x24" godot --rendering-driver opengl3 --fixed-fps 60 \
   --path cabal-3d --script res://tests/shot_test.gd -- /ruta/salida
+
+# personaje: c_idle, c_fire, c_run, c_crouch, c_aim, c_zombies, c_spit en la aldea (char_shot) y contactos del rig con
+# poses sueltas (rig_test: idle, apuntar de frente/lado/espalda/arriba/abajo, caminar, correr, agachado, voltereta, muerte; zombi)
+... --script res://tests/char_shot.gd -- /ruta/salida
+... --script res://tests/rig_test.gd -- /ruta/salida [player|zombie|all]
 ```
 
 Con `SMOKE_ARENA=kenney` el mismo test corre contra el patio de respaldo. Con la arena Meshy ademas comprueba la
@@ -177,19 +208,27 @@ jugador, 300 apariciones al azar, rutas aleatorias, muros reales, rayos bloquead
 apoyados en el suelo, limite invisible, el jugador recorre rutas sin atorarse, y una escuadra de 16 enemigos que debe
 llegar a ver al jugador en un porcentaje alto sin atorarse).
 
-El smoke test cubre: menu, inicio, todos los tipos de enemigo y el jefe (enfurecido y muerte con camara lenta), composicion
+El smoke test (177 comprobaciones) cubre ademas el personaje: esqueleto de 28 huesos, animaciones presentes, escala a 1.8 m,
+arma sujeta a la mano derecha por un `BoneAttachment3D`, muzzle valido, un tinte distinto por tipo de zombi, sin T-pose / raiz
+desplazada / pies hundidos o flotando (jugador, agachado y zombis), ataque melee del corredor que daña, proyectil toxico que daña,
+muerte procedural del zombi y del jugador y `revive()`. Cubre: menu, inicio, todos los tipos de enemigo y el jefe (enfurecido y muerte con camara lenta), composicion
 de las 15 oleadas, victoria al completar la 15, drops y armas temporales, granadas, agacharse/rodar/saltar, pausa
 (los enemigos no se mueven), reinicio (limpia todo), game over, ranking persistido y que `Engine.time_scale` siempre vuelva a su valor.
 
 ## Licencias
 
-Codigo del juego: el mismo del repositorio. Assets de terceros: **CC0** (Kenney), ver `assets/third_party/kenney/README.md`.
-La arena `assets/meshy/oasis_village.glb` la genero el usuario con **Meshy AI**: su licencia depende del plan de Meshy
-con que se genero (ver `assets/meshy/README.md`).
+Codigo del juego: el mismo del repositorio. Assets de terceros: **CC0** (Kenney: armas, props, particulas, fuente), ver
+`assets/third_party/kenney/README.md`. La arena `oasis_village.glb`, el soldado (`character.glb`) y el zombi (`zombie.glb`)
+con sus animaciones los genero el usuario con **Meshy AI**: su licencia depende del plan de Meshy con que se generaron
+(ver `assets/meshy/README.md`).
 
-## Peso del ejecutable
+## Peso del ejecutable y entrega en dos ZIPs
 
-El export de Windows (`godot --headless --path cabal-3d --export-release "Windows Desktop" build/Cabal3D.exe`, con
-`export_presets.cfg` excluyendo `tests/*`, `tools/*`, `*.md`) pesa ~75.5 MB (la plantilla de Godot son 69.7 MB) y el ZIP con
-`zip -9` ~29.7 MiB. Para llegar ahi: texturas de la aldea recomprimidas (WebP con pérdida en el import, sin VRAM-compression),
-audio largo en ADPCM, particulas a 256 px y se borraron los modelos de Kenney que ya no se usan.
+`export_presets.cfg` tiene `binary_format/embed_pck=false`: el export de Windows
+(`godot --headless --path cabal-3d --export-release "Windows Desktop" build/Cabal3D.exe`, excluye `tests/*`, `tools/*`, `*.md`)
+genera **dos archivos**: `Cabal3D.exe` (la plantilla de Godot, 69.7 MB) y `Cabal3D.pck` (~9 MB: juego + arena + personajes + audio).
+El canal de entrega limita cada archivo a 30 MiB, asi que se entregan dos ZIPs (`zip -9`): `Cabal3D_parte1_exe.zip` (solo el .exe,
+~24.5 MiB) y `Cabal3D_parte2_datos.zip` (el .pck y `tools/LEEME.txt`, ~8.3 MiB). Hay que descomprimir **ambos en la misma carpeta**.
+Para llegar a ese peso: texturas de la aldea y de los personajes recomprimidas (JPEG al armar el GLB y WebP con perdida en el import,
+sin VRAM-compression), audio largo en ADPCM, particulas a 256 px, animaciones en un `.res` comprimido sin malla ni texturas y se
+borraron los modelos de Kenney que ya no se usan (Blocky, blasters de los enemigos).

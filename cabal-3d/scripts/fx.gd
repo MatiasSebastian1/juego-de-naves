@@ -9,6 +9,14 @@ const Assets = preload("res://scripts/assets.gd")
 var game
 var _mats := {}
 var tracers: Array = []     # [{n, t, life}]
+var spits: Array = []       # proyectiles toxicos de los zombis: [{n, a, dir, total, head, t}]
+var splat_pool: Array = []
+var _spi := 0
+var _spl := 0
+var ramp_fire: Gradient
+var ramp_toxic: Gradient
+var ramp_smoke: Gradient
+var ramp_smoke_toxic: Gradient
 var spark_pool: Array = []
 var dust_pool: Array = []
 var muzzles: Array = []     # [{n, t}]
@@ -47,6 +55,26 @@ func _ready() -> void:
 		tracers.append({"n": m, "t": 0.0, "life": 0.07, "col": Color.WHITE})
 	for i in 14:
 		spark_pool.append(_make_sparks(8, 0.45))
+	# proyectiles toxicos (bolas de acido) y salpicaduras verdes
+	var sm := SphereMesh.new()
+	sm.radius = 0.5
+	sm.height = 1.0
+	sm.radial_segments = 10
+	sm.rings = 5
+	for i in 40:
+		var m := MeshInstance3D.new()
+		m.mesh = sm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.55, 1.0, 0.2)
+		mat.disable_fog = true
+		m.material_override = mat
+		m.visible = false
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(m)
+		spits.append({"n": m, "t": 0.0, "a": Vector3.ZERO, "dir": Vector3.FORWARD, "total": 0.0, "head": 0.0})
+	for i in 12:
+		splat_pool.append(_make_splat())
 	for i in 10:
 		dust_pool.append(_make_dust())
 	# fogonazos
@@ -147,6 +175,27 @@ func _make_sparks(n: int, life: float) -> CPUParticles3D:
 	add_child(p)
 	return p
 
+func _make_splat() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = 7
+	p.lifetime = 0.7
+	p.one_shot = true
+	p.emitting = false
+	p.explosiveness = 0.95
+	p.local_coords = false
+	p.mesh = _quad(pmat("circle_05", true), 0.28)
+	p.direction = Vector3.UP
+	p.spread = 70.0
+	p.initial_velocity_min = 1.5
+	p.initial_velocity_max = 5.0
+	p.gravity = Vector3(0, -9, 0)
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	p.color_ramp = _ramp(Color(0.55, 1.0, 0.2, 0.9), Color(0.1, 0.6, 0.05, 0.0), 0.02)
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(p)
+	return p
+
 func _make_dust() -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.amount = 5
@@ -196,7 +245,9 @@ func _make_boom() -> Dictionary:
 	fire.scale_amount_curve = _curve(0.6, 1.0)
 	fire.angle_min = 0.0
 	fire.angle_max = 360.0
-	fire.color_ramp = _ramp(Color(1.0, 0.75, 0.35, 1.0), Color(0.8, 0.15, 0.02, 0.0), 0.05)
+	ramp_fire = _ramp(Color(1.0, 0.75, 0.35, 1.0), Color(0.8, 0.15, 0.02, 0.0), 0.05)
+	ramp_toxic = _ramp(Color(0.7, 1.0, 0.3, 1.0), Color(0.1, 0.55, 0.05, 0.0), 0.05)
+	fire.color_ramp = ramp_fire
 	fire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(fire)
 	var smoke := CPUParticles3D.new()
@@ -221,7 +272,9 @@ func _make_boom() -> Dictionary:
 	smoke.scale_amount_curve = _curve(0.5, 1.4)
 	smoke.angle_min = 0.0
 	smoke.angle_max = 360.0
-	smoke.color_ramp = _ramp(Color(0.16, 0.13, 0.12, 0.75), Color(0.1, 0.09, 0.09, 0.0), 0.12)
+	ramp_smoke = _ramp(Color(0.16, 0.13, 0.12, 0.75), Color(0.1, 0.09, 0.09, 0.0), 0.12)
+	ramp_smoke_toxic = _ramp(Color(0.18, 0.4, 0.1, 0.7), Color(0.1, 0.25, 0.06, 0.0), 0.12)
+	smoke.color_ramp = ramp_smoke
 	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(smoke)
 	var sp := _make_sparks(26, 0.9)
@@ -324,7 +377,7 @@ func dust(pos: Vector3, normal: Vector3, size := 1.0) -> void:
 	p.restart()
 	p.emitting = true
 
-func muzzle(pos: Vector3, size := 0.7) -> void:
+func muzzle(pos: Vector3, size := 0.7, col := Color.WHITE) -> void:
 	if Assets.headless:
 		return
 	var m = muzzles[_mi]
@@ -332,6 +385,7 @@ func muzzle(pos: Vector3, size := 0.7) -> void:
 	var n: MeshInstance3D = m.n
 	n.global_position = pos
 	(n.mesh as QuadMesh).size = Vector2(size, size)
+	(n.material_override as StandardMaterial3D).albedo_color = col
 	n.rotation.z = randf() * TAU
 	n.visible = true
 	m.t = 0.05
@@ -354,7 +408,7 @@ func scorch(pos: Vector3, radius: float) -> void:
 	n.visible = true
 	s.t = 9.0
 
-func explosion(pos: Vector3, radius: float) -> void:
+func explosion(pos: Vector3, radius: float, toxic := false) -> void:
 	if Assets.headless:
 		return
 	var b = boom_pool[_bi]
@@ -366,13 +420,16 @@ func explosion(pos: Vector3, radius: float) -> void:
 		p.restart()
 		p.emitting = true
 	var f: CPUParticles3D = b.fire
+	f.color_ramp = ramp_toxic if toxic else ramp_fire
+	(b.smoke as CPUParticles3D).color_ramp = ramp_smoke_toxic if toxic else ramp_smoke
+	(b.light as OmniLight3D).light_color = Color(0.5, 1.0, 0.3) if toxic else Color(1.0, 0.6, 0.25)
 	f.scale_amount_min = radius * 0.5
 	f.scale_amount_max = radius * 0.85
 	var ring: MeshInstance3D = b.ring
 	ring.global_position = Vector3(pos.x, _gy(pos) + 0.14, pos.z)
 	ring.scale = Vector3(radius, 1, radius)
 	ring.visible = true
-	(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(1.0, 0.7, 0.4, 1.0))
+	(ring.material_override as ShaderMaterial).set_shader_parameter("color", Color(0.55, 1.0, 0.3, 1.0) if toxic else Color(1.0, 0.7, 0.4, 1.0))
 	(ring.material_override as ShaderMaterial).set_shader_parameter("fill", 0.0)
 	var l: OmniLight3D = b.light
 	l.global_position = gp + Vector3(0, 1.0, 0)
@@ -380,13 +437,51 @@ func explosion(pos: Vector3, radius: float) -> void:
 	l.light_energy = 7.0
 	b.t = 0.0
 	b.r = radius
-	scorch(pos, radius * 0.55)
+	if not toxic:
+		scorch(pos, radius * 0.55)
 
-func poof(pos: Vector3, big := false) -> void:
+func poof(pos: Vector3, big := false, toxic := false) -> void:
 	if Assets.headless:
 		return
 	dust(pos + Vector3(0, 0.5, 0), Vector3.UP, 1.6 if big else 1.0)
-	sparks(pos + Vector3(0, 1.0, 0), Vector3.UP)
+	if toxic:
+		splat(pos + Vector3(0, 0.8, 0), Vector3.UP, 1.8 if big else 1.2)
+	else:
+		sparks(pos + Vector3(0, 1.0, 0), Vector3.UP)
+
+# salpicadura verde (impacto de un proyectil toxico; sin sangre)
+func splat(pos: Vector3, normal: Vector3, size := 1.0) -> void:
+	if Assets.headless:
+		return
+	var p: CPUParticles3D = splat_pool[_spl]
+	_spl = (_spl + 1) % splat_pool.size()
+	p.global_position = pos + normal * 0.05
+	p.direction = normal
+	p.scale_amount_min = 0.5 * size
+	p.scale_amount_max = 1.2 * size
+	p.restart()
+	p.emitting = true
+
+# bola de acido que viaja de `a` a `b` (el dano ya se resolvio por rayo; esto es solo la parte visual)
+func spit(a: Vector3, b: Vector3, col: Color, size := 1.0) -> void:
+	if Assets.headless:
+		return
+	var len := a.distance_to(b)
+	if len < 0.1:
+		return
+	var t = spits[_spi]
+	_spi = (_spi + 1) % spits.size()
+	t.a = a
+	t.dir = (b - a).normalized()
+	t.total = len
+	t.head = 0.0
+	t.t = 1.0
+	t.size = 0.2 + 0.1 * size
+	t.n.visible = true
+	t.n.global_position = a
+	t.n.scale = Vector3.ONE * t.size
+	(t.n.material_override as StandardMaterial3D).albedo_color = col
+	tracer(a, b, col.darkened(0.2), 0.02, 0.05)
 
 # anillo de aviso en el suelo (devuelve el nodo; quien lo crea lo libera)
 func make_ring(pos: Vector3, radius: float, col := Color(1.0, 0.25, 0.1)) -> MeshInstance3D:
@@ -497,6 +592,14 @@ func _process(delta: float) -> void:
 				var seg: float = maxf(0.05, s1 - s0)
 				var mid: Vector3 = t.a + t.dir * ((s0 + s1) * 0.5)
 				n.global_transform = Transform3D(Basis.looking_at(t.dir, Vector3.UP).scaled(Vector3(t.w, t.w, seg)), mid)
+	for sp in spits:
+		if sp.t > 0.0:
+			sp.head += 55.0 * delta
+			if sp.head >= sp.total:
+				sp.t = 0.0
+				sp.n.visible = false
+			else:
+				sp.n.global_position = sp.a + sp.dir * sp.head
 	for m in muzzles:
 		if m.t > 0.0:
 			m.t -= delta
@@ -534,6 +637,9 @@ func clear() -> void:
 	for t in tracers:
 		t.t = 0.0
 		t.n.visible = false
+	for sp in spits:
+		sp.t = 0.0
+		sp.n.visible = false
 	for m in muzzles:
 		m.t = 0.0
 		m.n.visible = false

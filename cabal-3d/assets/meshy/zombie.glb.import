@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dny6tads2a88m"
-path="res://.godot/imported/character-o.glb-2370c5434d3520b80a08a398dd1efd56.scn"
+uid="uid://cwu7cia35mf1v"
+path="res://.godot/imported/zombie.glb-41878099026137267a019ca95579fecb.scn"
 
 [deps]
 
-source_file="res://assets/third_party/kenney/characters/character-o.glb"
-dest_files=["res://.godot/imported/character-o.glb-2370c5434d3520b80a08a398dd1efd56.scn"]
+source_file="res://assets/meshy/zombie.glb"
+dest_files=["res://.godot/imported/zombie.glb-41878099026137267a019ca95579fecb.scn"]
 
 [params]
 
@@ -17,12 +17,12 @@ nodes/root_type=""
 nodes/root_name=""
 nodes/apply_root_scale=true
 nodes/root_scale=1.0
-meshes/ensure_tangents=false
+meshes/ensure_tangents=true
 meshes/generate_lods=false
 meshes/create_shadow_meshes=false
 meshes/light_baking=1
 meshes/lightmap_texel_size=0.2
-meshes/force_disable_compression=true
+meshes/force_disable_compression=false
 skins/use_named_skins=true
 animation/import=true
 animation/fps=30

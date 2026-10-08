@@ -1,0 +1,10 @@
+CABAL 3D - Windows (64 bits)
+El juego viene en DOS archivos ZIP (el canal de envio limita cada archivo a 30 MiB):
+  Cabal3D_parte1_exe.zip    -> Cabal3D.exe
+  Cabal3D_parte2_datos.zip  -> Cabal3D.pck + este LEEME.txt
+1. Descomprimi AMBOS zips en la MISMA carpeta (Cabal3D.exe y Cabal3D.pck tienen que quedar juntos, con esos nombres).
+2. Abri Cabal3D.exe (doble click).
+   Si Windows muestra "SmartScreen": toca "Mas informacion" y despues "Ejecutar de todas formas" (el programa no esta firmado).
+   Si falta el .pck el juego no arranca ("No main pack found"): revisa que ambos archivos esten en la misma carpeta.
+Controles: WASD mover, mouse apuntar, click disparar, click derecho apuntar, R recargar, G granada, Espacio rodar, C agacharse, Shift correr, P pausa, F11 pantalla completa.
+Requiere una placa de video con OpenGL 3.3 o superior.

@@ -7,17 +7,24 @@ const Model = preload("res://scripts/model.gd")
 const FONT_PATH := "res://assets/third_party/kenney/fonts/Kenney Future.ttf"
 const Assets = preload("res://scripts/assets.gd")
 
+# Todos los enemigos son el mismo zombi de Meshy (assets/meshy/zombie.glb); se distinguen por tinte, escala y anillo de pies.
+# Los que atacan a distancia (fusilero, pesado, granadero, jefe) lanzan proyectiles toxicos (escupitajo / bolsas de acido)
+# con el gesto de la animacion "attack"; el corredor ataca cuerpo a cuerpo con esa misma animacion.
+const TOXIC := Color(0.5, 1.0, 0.18)
+const ATTACK_FROM := 0.35        # instante de la animacion "attack" donde empieza a levantar los brazos
+const ATTACK_HIT := 1.40         # instante del golpe / lanzamiento
+const ATTACK_END := 1.70         # hasta aqui el gesto bloquea la locomocion
 const TYPES := {
-	"rifleman": {"letter": "k", "hp": 70.0, "speed": 3.7, "scale": 1.0, "dmg": 8.0, "tele": 0.62, "spread": 3.6, "burst": [2, 4], "score": 100,
-		"gun": "blaster-h", "glen": 1.45, "col": Color(1.0, 0.25, 0.2), "name": "FUSILERO"},
-	"runner": {"letter": "d", "hp": 48.0, "speed": 7.4, "scale": 0.95, "dmg": 16.0, "tele": 0.38, "spread": 0.0, "burst": [1, 1], "score": 120,
-		"gun": "", "glen": 1.0, "col": Color(1.0, 0.85, 0.1), "name": "CORREDOR"},
-	"heavy": {"letter": "g", "hp": 330.0, "speed": 2.5, "scale": 1.35, "dmg": 9.0, "tele": 0.9, "spread": 4.4, "burst": [6, 9], "score": 400,
-		"gun": "blaster-d", "glen": 1.7, "col": Color(1.0, 0.5, 0.1), "name": "PESADO"},
-	"grenadier": {"letter": "o", "hp": 85.0, "speed": 3.3, "scale": 1.05, "dmg": 0.0, "tele": 0.7, "spread": 0.0, "burst": [1, 1], "score": 200,
-		"gun": "blaster-i", "glen": 1.2, "col": Color(0.3, 1.0, 0.4), "name": "GRANADERO"},
-	"boss": {"letter": "h", "hp": 2700.0, "speed": 2.9, "scale": 2.2, "dmg": 10.0, "tele": 1.0, "spread": 1.2, "burst": [10, 14], "score": 3000,
-		"gun": "blaster-e", "glen": 1.9, "col": Color(1.0, 0.25, 0.9), "name": "JEFE"},
+	"rifleman": {"tint": Color(1.55, 0.8, 0.72), "hp": 70.0, "speed": 3.7, "scale": 1.0, "dmg": 8.0, "tele": 0.62, "spread": 3.6, "burst": [2, 4], "score": 100,
+		"col": Color(1.0, 0.25, 0.2), "name": "FUSILERO"},
+	"runner": {"tint": Color(1.6, 1.45, 0.62), "hp": 48.0, "speed": 7.4, "scale": 0.95, "dmg": 16.0, "tele": 0.38, "spread": 0.0, "burst": [1, 1], "score": 120,
+		"col": Color(1.0, 0.85, 0.1), "name": "CORREDOR"},
+	"heavy": {"tint": Color(1.6, 1.0, 0.55), "hp": 330.0, "speed": 2.5, "scale": 1.25, "dmg": 9.0, "tele": 0.9, "spread": 4.4, "burst": [6, 9], "score": 400,
+		"col": Color(1.0, 0.5, 0.1), "name": "PESADO"},
+	"grenadier": {"tint": Color(0.78, 1.5, 0.8), "hp": 85.0, "speed": 3.3, "scale": 1.05, "dmg": 0.0, "tele": 0.7, "spread": 0.0, "burst": [1, 1], "score": 200,
+		"col": Color(0.3, 1.0, 0.4), "name": "GRANADERO"},
+	"boss": {"tint": Color(1.5, 0.75, 1.5), "hp": 2700.0, "speed": 2.9, "scale": 2.1, "dmg": 10.0, "tele": 1.0, "spread": 1.2, "burst": [10, 14], "score": 3000,
+		"col": Color(1.0, 0.25, 0.9), "name": "JEFE"},
 }
 
 var game
@@ -108,13 +115,13 @@ func init_type(t: String, wave: int, pos: Vector3) -> void:
 	add_child(col)
 	model = Model.new()
 	add_child(model)
-	model.setup(cfg.letter, Color(1, 1, 1), 0.55, 0.4)
+	model.setup("zombie", cfg.tint, 0.5, 0.4)
 	model.scale = Vector3.ONE * scale_f
-	model.base_emit = cfg.col * 0.1
+	model.base_emit = cfg.col * 0.08
 	model.glow_col = cfg.col
-	if cfg.gun != "":
-		model.give_weapon(cfg.gun, cfg.glen)
-	model.play("idle" if t == "runner" else "idle_h", 0.0)
+	model.speed_var = randf_range(0.88, 1.14)       # cada zombi camina a su propio ritmo y desfasado
+	model.play("idle", 0.0)
+	model.randomize_phase()
 	if not Assets.headless:
 		# anillo de color bajo los pies (identifica al tipo de un vistazo)
 		foot_ring = MeshInstance3D.new()
@@ -257,6 +264,10 @@ func _set_state(s: String, t := 0.0) -> void:
 
 func _telegraph(on: bool) -> void:
 	model.glow = 1.0 if on else 0.0
+	if on:
+		# el gesto de "attack" (brazos arriba y golpe hacia adelante) llega a su punto de impacto cuando termina el telegrafo
+		var lead: float = cfg.tele + (0.14 if type == "runner" else 0.0)
+		model.gesture("attack", ATTACK_FROM, (ATTACK_HIT - ATTACK_FROM) / lead, ATTACK_END)
 	if warn == null:
 		return
 	warn.visible = on
@@ -274,9 +285,11 @@ func _physics_process(delta: float) -> void:
 	if game.state != "play":
 		velocity = Vector3(0, velocity.y - 24.0 * delta, 0)
 		move_and_slide()
-		model.play("idle" if type == "runner" else "idle_h")
+		model.play("idle")
 		return
 	spawn_t = maxf(0.0, spawn_t - delta)
+	var dp2 := global_position.distance_squared_to(player.global_position)
+	model.lod = 1 if dp2 < 26.0 * 26.0 else (2 if dp2 < 48.0 * 48.0 else 3)    # animacion mas espaciada a lo lejos
 	repath_t -= delta
 	st_t -= delta
 	shot_cd -= delta
@@ -374,17 +387,12 @@ func _apply_motion(delta: float) -> void:
 		model.rotation.y = lerp_angle(model.rotation.y, atan2(look.x, look.z), 1.0 - exp(-delta * (12.0 if face_dir.length() > 0.01 else 9.0)))
 	# agachado (en cobertura baja)
 	crouch_k = lerpf(crouch_k, 0.64 if (state == "hide" and cover != null and cover.low) else 1.0, 1.0 - exp(-delta * 14.0))
-	model.scale = Vector3(scale_f, scale_f * crouch_k, scale_f)
+	model.scale = Vector3.ONE * scale_f
+	model.crouch = clampf((1.0 - crouch_k) / 0.36, 0.0, 1.0)
 	capsule.height = 1.84 * scale_f * crouch_k
 	col.position.y = capsule.height * 0.5
-	# animacion
-	var run_t := type == "runner"
-	if hs > speed * 0.85 and (run_t or speed > 5.0 or state == "retreat"):
-		model.play("sprint" if run_t else "sprint_h", 0.1, clampf(hs / 6.0, 0.7, 1.5))
-	elif hs > 0.4:
-		model.play("walk" if run_t else "walk_h", 0.12, clampf(hs / 3.2, 0.6, 1.6))
-	else:
-		model.play("idle" if run_t else "idle_h", 0.15)
+	# animacion (caminar para los lentos, correr para el corredor; velocidad proporcional a la velocidad real)
+	model.locomote(hs, 2.6 if type == "runner" else 99.0)
 
 # ---------------------------------------------------------------- fusilero / pesado
 
@@ -480,7 +488,7 @@ func _ai_shooter(delta: float) -> void:
 					_goto(level.nearest_free(player.global_position), 0.8)
 					_follow(speed * 0.4)
 			if shot_cd <= 0.0 and burst_left > 0:
-				_fire_shot(cfg.dmg, cfg.spread * (1.0 - 0.45 * diff), Color(1.0, 0.4, 0.15))
+				_fire_shot(cfg.dmg, cfg.spread * (1.0 - 0.45 * diff), TOXIC)
 				burst_left -= 1
 				shot_cd = (0.09 if heavy else 0.14) * (1.0 - 0.25 * diff) + randf() * 0.03
 			if burst_left <= 0 and shot_cd <= -0.15:
@@ -514,6 +522,7 @@ func _ai_shooter(delta: float) -> void:
 
 func _relocate() -> void:
 	_telegraph(false)
+	model.cancel_gesture()
 	_pick_cover()
 	_set_state("move")
 	path = PackedVector3Array()
@@ -526,7 +535,8 @@ func _fire_shot(dmg: float, spread_deg: float, col_t: Color) -> void:
 	var dir := (tgt - origin).normalized()
 	_shoot_dir(origin, dir, dmg, spread_deg, col_t)
 	model.kick()
-	fx.muzzle(origin + dir * 0.2, 0.55 * minf(scale_f, 1.5))
+	fx.muzzle(origin + dir * 0.2, 0.55 * minf(scale_f, 1.5), TOXIC)
+	model.gesture("attack", ATTACK_HIT - 0.12, 3.0, ATTACK_END)
 	game.sfx.play3d("enemy", origin, -5.0, 0.08, 14.0)
 
 func _shoot_dir(origin: Vector3, dir: Vector3, dmg: float, spread_deg: float, col_t: Color) -> void:
@@ -543,10 +553,8 @@ func _shoot_dir(origin: Vector3, dir: Vector3, dmg: float, spread_deg: float, co
 		if r.collider == player:
 			player.take_damage(dmg, global_position)
 		else:
-			fx.sparks(r.position, r.normal)
-			if r.normal.y > 0.5 or randf() < 0.4:
-				fx.dust(r.position, r.normal, 0.7)
-	fx.tracer(origin, end, col_t, 0.045 * minf(scale_f, 1.6), 0.09)
+			fx.splat(r.position, r.normal, 0.8)
+	fx.spit(origin, end, TOXIC, minf(scale_f, 1.6))
 
 # ---------------------------------------------------------------- corredor
 
@@ -569,8 +577,6 @@ func _ai_runner(delta: float) -> void:
 			face_dir = to_p
 			if st_t <= 0.0:
 				_telegraph(false)
-				model.play_once("attack-melee-right", 0.03)
-				model.cur = "attack-melee-right"
 				_set_state("strike", 0.42)
 				strike_done = false
 		"strike":
@@ -697,23 +703,23 @@ func _ai_boss(delta: float) -> void:
 						for i in n_rays:
 							var a := deg_to_rad(lerpf(-32.0, 32.0, float(i) / (n_rays - 1)))
 							var dd := base.rotated(Vector3.UP, a)
-							_shoot_dir(origin, dd, cfg.dmg, 1.2, Color(1.0, 0.3, 0.85))
+							_shoot_dir(origin, dd, cfg.dmg, 1.2, TOXIC)
 						fx.muzzle(origin + base * 0.3, 1.6)
 						game.sfx.play3d("spread", origin, 0.0, 0.05, 20.0)
 						shot_cd = 0.38 * (0.75 if enraged else 1.0)
 					"nades":
 						var off := Vector3(randf_range(-4, 4), 0, randf_range(-4, 4)) if pattern_n > 0 else Vector3.ZERO
 						var tg: Vector3 = level.nearest_free(player.global_position + off)
-						var ring: MeshInstance3D = fx.make_ring(tg, 4.2, Color(1.0, 0.25, 0.9))
+						var ring: MeshInstance3D = fx.make_ring(tg, 4.2, TOXIC)
 						game.throw_grenade(origin + Vector3(0, 0.6, 0), tg, false, ring)
 						game.sfx.play3d("nade", origin, 0.0, 0.05, 18.0)
 						shot_cd = 0.5
 					"burst":
-						_fire_shot(cfg.dmg * 0.7, 2.6, Color(1.0, 0.3, 0.85))
+						_fire_shot(cfg.dmg * 0.7, 2.6, TOXIC)
 						shot_cd = 0.075
 				pattern_n += 1
 				burst_left -= 1
-				model.kick()
+				model.gesture("attack", ATTACK_HIT - 0.12, 2.2, ATTACK_END)
 			if burst_left <= 0 and shot_cd <= -0.1:
 				_set_state("move")
 				st_t = 0.0
@@ -726,9 +732,7 @@ func take_hit(dmg: float, pos: Vector3, head: bool, dir: Vector3) -> void:
 	hp -= dmg
 	model.hit_flash()
 	hit_react = 0.15
-	fx.sparks(pos, -dir)
-	if randf() < 0.5:
-		fx.dust(pos, -dir, 0.5)
+	fx.splat(pos, -dir, 0.6)
 	var killed := hp <= 0.0
 	game.on_enemy_hit(self, head, killed, pos)
 	game.sfx.play3d("head" if head else "hit", pos, -2.0, 0.06)
@@ -752,7 +756,8 @@ func die(head := false) -> void:
 		cover.taken = null
 	collision_layer = 0
 	collision_mask = 1 | 8
-	model.play_once("die", 0.04)
+	model.cancel_gesture()
+	model.die(randf_range(-1.0, 1.0))
 	model.base_emit = Color.BLACK
 	model.scale = Vector3.ONE * scale_f
 	if foot_ring:
@@ -760,7 +765,7 @@ func die(head := false) -> void:
 	if bar_bg:
 		bar_bg.visible = false
 		bar_fg.visible = false
-	fx.poof(global_position, type == "boss" or type == "heavy")
+	fx.poof(global_position, type == "boss" or type == "heavy", true)
 	game.on_enemy_died(self, head)
 
 func _die_tick(delta: float) -> void:

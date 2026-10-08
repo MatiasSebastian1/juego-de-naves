@@ -5,9 +5,9 @@ extends CharacterBody3D
 const Model = preload("res://scripts/model.gd")
 
 const WEAPONS := {
-	"rifle": {"name": "RIFLE", "rate": 0.105, "dmg": 22.0, "pellets": 1, "spread": 0.7, "kick": 0.55, "sound": "shot", "gun": "blaster-a", "len": 2.0, "tracer": Color(1.0, 0.86, 0.5)},
-	"spread": {"name": "ESCOPETA", "rate": 0.78, "dmg": 12.0, "pellets": 9, "spread": 4.6, "kick": 2.4, "sound": "spread", "gun": "blaster-d", "len": 2.1, "tracer": Color(1.0, 0.7, 0.35)},
-	"burst": {"name": "RAFAGA", "rate": 0.058, "dmg": 15.0, "pellets": 1, "spread": 1.3, "kick": 0.4, "sound": "shot", "gun": "blaster-e", "len": 2.2, "tracer": Color(0.5, 0.9, 1.0)},
+	"rifle": {"name": "RIFLE", "rate": 0.105, "dmg": 22.0, "pellets": 1, "spread": 0.7, "kick": 0.55, "sound": "shot", "gun": "blaster-a", "len": 0.75, "tracer": Color(1.0, 0.86, 0.5)},
+	"spread": {"name": "ESCOPETA", "rate": 0.78, "dmg": 12.0, "pellets": 9, "spread": 4.6, "kick": 2.4, "sound": "spread", "gun": "blaster-d", "len": 0.85, "tracer": Color(1.0, 0.7, 0.35)},
+	"burst": {"name": "RAFAGA", "rate": 0.058, "dmg": 15.0, "pellets": 1, "spread": 1.3, "kick": 0.4, "sound": "shot", "gun": "blaster-e", "len": 1.0, "tracer": Color(0.5, 0.9, 1.0)},
 }
 
 var game
@@ -97,8 +97,8 @@ func _ready() -> void:
 	model = Model.new()
 	model.position.y = -0.9
 	rot_pivot.add_child(model)
-	model.setup("m", Color(1, 1, 1), 0.12, 0.5)
-	model.give_weapon("blaster-a", 1.55)
+	model.setup("player", Color(1.35, 1.32, 1.28), 0.25, 0.5)
+	model.give_weapon("blaster-a", WEAPONS.rifle.len)
 	# camara
 	cam_pivot = Node3D.new()
 	cam_pivot.position.y = cam_h
@@ -152,8 +152,10 @@ func reset() -> void:
 	face_yaw = yaw + PI
 	model.rotation.y = face_yaw
 	rot_pivot.rotation = Vector3.ZERO
-	model.scale = Vector3.ONE
-	model.play("idle_h", 0.0)
+	rot_pivot.position.y = 0.9
+	model.position.y = -0.9
+	model.revive()
+	model.play("idle", 0.0)
 	capsule.height = 1.8
 	col.position.y = 0.9
 	cam_h = 1.75
@@ -232,7 +234,7 @@ func die() -> void:
 	dead = true
 	reloading = false
 	in_fire = false
-	model.play_once("die", 0.05)
+	model.die(1.0 if randf() < 0.5 else -1.0)
 	game.player_died()
 
 func heal(a: float) -> void:
@@ -245,7 +247,7 @@ func _physics_process(delta: float) -> void:
 	if game == null:
 		return
 	if game.state == "menu":
-		model.play("idle_h")
+		model.play("idle")
 		return
 	var st: String = game.state
 	if st == "pause":
@@ -371,26 +373,28 @@ func _physics_process(delta: float) -> void:
 		target_yaw = atan2(roll_dir.x, roll_dir.z)
 	var turn := 22.0 if (combat_t > 0.0) else 10.0
 	face_yaw = lerp_angle(face_yaw, target_yaw, 1.0 - exp(-delta * turn))
-	model.rotation.y = face_yaw
-	# voltereta al rodar
-	if roll_t > 0.0:
+	# voltereta al rodar: el cuerpo se encoge y gira hacia adelante alrededor del centro del cuerpo encogido
+	var rolling := roll_t > 0.0
+	var tk := 1.0 - exp(-delta * 18.0)
+	model.tuck = lerpf(model.tuck, 1.0 if rolling else 0.0, tk)
+	model.crouch = lerpf(model.crouch, 1.0 if (want_crouch and not rolling) else 0.0, 1.0 - exp(-delta * 12.0))
+	model.aim_k = lerpf(model.aim_k, 1.0 if (combat_t > 0.0 or aiming) else 0.0, 1.0 - exp(-delta * 10.0))
+	if rolling:
 		var k := 1.0 - roll_t / ROLL_TIME
-		rot_pivot.rotation.x = k * TAU
-		model.scale = Vector3.ONE * 0.9
+		rot_pivot.position.y = 0.62
+		model.position.y = -0.62
+		rot_pivot.rotation = Vector3(k * TAU, face_yaw, 0.0)
+		model.rotation.y = 0.0
 	else:
-		rot_pivot.rotation.x = 0.0
-		var sy := lerpf(model.scale.y, 0.74 if want_crouch else 1.0, 1.0 - exp(-delta * 14.0))
-		model.scale = Vector3(1.0, sy, 1.0)
-	model.position.y = -0.9
-	# --- animacion
-	if roll_t > 0.0:
-		model.play("sprint_h", 0.05, 1.6)
-	elif hspd > 5.0:
-		model.play("sprint_h", 0.12, hspd / 6.5)
-	elif hspd > 0.4:
-		model.play("walk_h", 0.12, clampf(hspd / 3.2, 0.6, 1.4))
+		rot_pivot.position.y = 0.9
+		model.position.y = -0.9
+		rot_pivot.rotation = Vector3.ZERO
+		model.rotation.y = face_yaw
+	# --- animacion (piernas/cadera); el torso y los brazos los pone model.gd con IK sobre el arma
+	if rolling:
+		model.play("run", 0.05, 1.6)
 	else:
-		model.play("idle_h", 0.15, 1.0)
+		model.locomote(hspd)
 	_update_camera(delta)
 	# luz del fogonazo
 	flash_light_t = maxf(0.0, flash_light_t - delta)

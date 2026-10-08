@@ -647,7 +647,7 @@ func throw_grenade(start: Vector3, target: Vector3, by_player: bool, ring = null
 	return g
 
 func explosion(pos: Vector3, radius: float, dmg: float, by_player: bool) -> void:
-	fx.explosion(pos, radius)
+	fx.explosion(pos, radius, not by_player)
 	sfx.play3d("boom", pos, 3.0, 0.05, 28.0)
 	var dp: float = player.global_position.distance_to(pos)
 	shake(clampf(1.2 - dp / 28.0, 0.0, 1.0))
